@@ -46,23 +46,13 @@
 // TODO throw event or exception if the serial port goes down...
 //---------------------------------------------------------------------------
 ofxFirmata::ofxFirmata(){
-	_portStatus = -1;
-	_waitForData = 0;
-	_analogHistoryLength = 2;
-	_digitalHistoryLength = 2;
-	_stringHistoryLength = 1;
-	_sysExHistoryLength = 1;
-	_initialized = false;
-	_totalDigitalPins = 0;
 	_executeMultiByteCommand = 0x00; // 0x00 a pin mode (input), not a command in Firmata -> fail hard
-	_multiByteChannel = 0;
-	_firmwareVersionSum = 0;
 	for(unsigned char & e : _storedInputData){
 		e = UCHAR_MAX;
 	}
-	for(int & e : _digitalPinMode){
-		e = INT_MAX;
-	}
+// 	for(int & e : _digitalPinMode){
+// 		e = INT_MAX;
+// 	}
 	for(int & e : _digitalPinValue){
 		e = INT_MAX;
 	}
@@ -81,16 +71,6 @@ ofxFirmata::ofxFirmata(){
 	for(int & e : _servoValue){
 		e = INT_MAX;
 	}
-	connected = false;
-	connectTime = 0.0f;
-
-	_majorProtocolVersion = 0;
-	_minorProtocolVersion = 0;
-	_majorFirmwareVersion = 0;
-	_minorFirmwareVersion = 0;
-	_firmwareName = "Unknown";
-
-	bUseDelay = true;
 }
 
 ofxFirmata::~ofxFirmata(){
@@ -104,8 +84,8 @@ void ofxFirmata::initPins() const {
 
 	if(_initialized){
 		return;                 // already initialized
-
 	}
+
 	// support Firmata 2.3/Arduino 1.0 with backwards compatibility
 	// to previous protocol versions
 	if(_firmwareVersionSum >= FIRMWARE2_3){
@@ -125,7 +105,7 @@ void ofxFirmata::initPins() const {
 	// digital pins
 	for(int i = 0; i < firstAnalogPin; ++i){
 		_digitalPinValue[i] = -1;
-		_digitalPinMode[i] = ARD_OUTPUT;
+		_digitalPinMode[i] = PinMode::DIGITAL_OUTPUT;
 		_digitalPinReporting[i] = ARD_OFF;
 	}
 
@@ -133,7 +113,7 @@ void ofxFirmata::initPins() const {
 	for(int i = firstAnalogPin; i < _totalDigitalPins; ++i){
 		_analogPinReporting[i - firstAnalogPin] = ARD_OFF;
 		// analog pins used as digital
-		_digitalPinMode[i] = ARD_ANALOG;
+		_digitalPinMode[i] = PinMode::ANALOG_INPUT;
 		_digitalPinValue[i] = -1;
 	}
 
@@ -217,9 +197,9 @@ int ofxFirmata::getAnalog(int pin) const {
 }
 
 int ofxFirmata::getDigital(int pin) const {
-	if(_digitalPinMode[pin] == ARD_INPUT && _digitalHistory[pin].size() > 0){
+	if(_digitalPinMode[pin] == PinMode::DIGITAL_INPUT && _digitalHistory[pin].size() > 0){
 		return _digitalHistory[pin].front();
-	}else if(_digitalPinMode[pin] == ARD_OUTPUT){
+	}else if(_digitalPinMode[pin] == PinMode::DIGITAL_OUTPUT){
 		return _digitalPinValue[pin];
 	}else{
 		return -1;
@@ -227,7 +207,7 @@ int ofxFirmata::getDigital(int pin) const {
 }
 
 int ofxFirmata::getPwm(int pin) const {
-	if(_digitalPinMode[pin] == ARD_PWM){
+	if(_digitalPinMode[pin] == PinMode::PWM){
 		return _digitalPinValue[pin];
 	}else{
 		return -1;
@@ -242,12 +222,12 @@ string ofxFirmata::getString() const {
 	return _stringHistory.front();
 }
 
-int ofxFirmata::getDigitalPinMode(int pin) const {
+PinMode ofxFirmata::getDigitalPinMode(int pin) const {
 	return _digitalPinMode[pin];
 }
 
 void ofxFirmata::sendDigital(int pin, int value, bool force){
-	if((_digitalPinMode[pin] == ARD_INPUT || _digitalPinMode[pin] == ARD_OUTPUT) && (_digitalPinValue[pin] != value || force)){
+	if((_digitalPinMode[pin] == PinMode::DIGITAL_INPUT || _digitalPinMode[pin] == PinMode::DIGITAL_OUTPUT) && (_digitalPinValue[pin] != value || force)){
 
 		_digitalPinValue[pin] = value;
 
@@ -287,22 +267,22 @@ void ofxFirmata::sendDigital(int pin, int value, bool force){
 			_digitalPortValue[port] &= ~(1 << bit);
 		}
 
-		sendByte(FIRMATA_DIGITAL_MESSAGE + port);
+		sendByte((int)MessageType::DIGITAL_IO_MESSAGE + port);
 		sendValueAsTwo7bitBytes(_digitalPortValue[port]);
 
 	}
 }
 
 void ofxFirmata::sendPwm(int pin, int value, bool force){
-	if(_digitalPinMode[pin] == ARD_PWM && (_digitalPinValue[pin] != value || force)){
-		sendByte(FIRMATA_ANALOG_MESSAGE + pin);
+	if(_digitalPinMode[pin] == PinMode::PWM && (_digitalPinValue[pin] != value || force)){
+		sendByte((int)MessageType::ANALOG_IO_MESSAGE + pin);
 		sendValueAsTwo7bitBytes(value);
 		_digitalPinValue[pin] = value;
 	}
 }
 
 void ofxFirmata::sendSysEx(int command, vector <unsigned char> data){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 	sendByte(command);
 	vector <unsigned char>::iterator it = data.begin();
 	while(it != data.end()){
@@ -310,40 +290,40 @@ void ofxFirmata::sendSysEx(int command, vector <unsigned char> data){
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
-	sendByte(FIRMATA_END_SYSEX);
+	sendByte(MessageType::END_SYSEX);
 }
 
 void ofxFirmata::sendSysExBegin(){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 }
 
 void ofxFirmata::sendSysExEnd(){
-	sendByte(FIRMATA_END_SYSEX);
+	sendByte(MessageType::END_SYSEX);
 }
 
 void ofxFirmata::sendString(string str){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 	sendByte(FIRMATA_SYSEX_FIRMATA_STRING);
 	string::iterator it = str.begin();
 	while(it != str.end()){
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
-	sendByte(FIRMATA_END_SYSEX);
+	sendByte(MessageType::END_SYSEX);
 }
 
 void ofxFirmata::sendProtocolVersionRequest(){
-	sendByte(FIRMATA_REPORT_VERSION);
+	sendByte(MessageType::PROTOCOL_VERSION);
 }
 
 void ofxFirmata::sendFirmwareVersionRequest(){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 	sendByte(FIRMATA_SYSEX_REPORT_FIRMWARE);
-	sendByte(FIRMATA_END_SYSEX);
+	sendByte(MessageType::END_SYSEX);
 }
 
 void ofxFirmata::sendReset(){
-	sendByte(FIRMATA_SYSTEM_RESET);
+	sendByte(MessageType::SYSTEM_RESET);
 }
 
 void ofxFirmata::sendAnalogPinReporting(int pin, int mode){
@@ -362,21 +342,21 @@ void ofxFirmata::sendAnalogPinReporting(int pin, int mode){
 		sendDigitalPinReporting(pin + firstAnalogPin, ARD_OFF);
 	}
 
-	_digitalPinMode[firstAnalogPin + pin] = ARD_ANALOG;
+	_digitalPinMode[firstAnalogPin + pin] = PinMode::ANALOG_INPUT;
 
-	sendByte(FIRMATA_REPORT_ANALOG + pin);
+	sendByte((int)MessageType::REPORT_ANALOG_PIN + pin);
 	sendByte(mode);
 	_analogPinReporting[pin] = mode;
 }
 
-void ofxFirmata::sendDigitalPinMode(int pin, int mode){
-	sendByte(FIRMATA_SET_PIN_MODE);
+void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode){
+	sendByte(MessageType::SET_PIN_MODE);
 	sendByte(pin);
-	sendByte(mode);
+	sendByte((int)mode);
 	_digitalPinMode[pin] = mode;
 
 	// turn on or off reporting on the port
-	if(mode == ARD_INPUT){
+	if(mode == PinMode::DIGITAL_INPUT){
 		//sendDigitalPinReporting(pin, ARD_ON);
 	}else{
 		//sendDigitalPinReporting(pin, ARD_OFF);
@@ -445,17 +425,17 @@ void ofxFirmata::processData(unsigned char inputData){
 		// we have all data executeMultiByteCommand
 		if(_waitForData == 0){
 			switch(_executeMultiByteCommand){
-			 case FIRMATA_DIGITAL_MESSAGE:
+			 case MessageType::DIGITAL_IO_MESSAGE:
 				 processDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
 				 break;
 
-			 case FIRMATA_REPORT_VERSION:    // report version
+			 case MessageType::PROTOCOL_VERSION:    // report version
 				 _majorProtocolVersion = _storedInputData[1];
 				 _minorProtocolVersion = _storedInputData[0];
 				 ofNotifyEvent(EProtocolVersionReceived, _majorProtocolVersion, this);
 				 break;
 
-			 case FIRMATA_ANALOG_MESSAGE:
+			 case MessageType::ANALOG_IO_MESSAGE:
 				 if(_analogHistory[_multiByteChannel].size() > 0){
 					 int previous = _analogHistory[_multiByteChannel].front();
 
@@ -483,7 +463,7 @@ void ofxFirmata::processData(unsigned char inputData){
 	else if(_waitForData < 0){
 
 		// we have all sysex data
-		if(inputData == FIRMATA_END_SYSEX){
+		if(inputData == (int)MessageType::END_SYSEX){
 			_waitForData = 0;
 			processSysExData(_sysExData);
 			_sysExData.clear();
@@ -508,14 +488,14 @@ void ofxFirmata::processData(unsigned char inputData){
 		}
 
 		switch(command){
-		 case FIRMATA_REPORT_VERSION:
-		 case FIRMATA_DIGITAL_MESSAGE:
-		 case FIRMATA_ANALOG_MESSAGE:
+		 case MessageType::PROTOCOL_VERSION:
+		 case MessageType::DIGITAL_IO_MESSAGE:
+		 case MessageType::ANALOG_IO_MESSAGE:
 			 _waitForData = 2;     // 2 bytes needed
 			 _executeMultiByteCommand = command;
 			 break;
 
-		 case FIRMATA_START_SYSEX:
+		 case MessageType::START_SYSEX:
 			 _sysExData.clear();
 			 _waitForData = -1;     // n bytes needed, -1 is used to indicate sysex message
 			 _executeMultiByteCommand = command;
@@ -618,7 +598,7 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value){
 		 for(i = 2; i < 8; ++i){
 			 pin = i;
 			 previous = -1;
-			 if(_digitalPinMode[pin] == ARD_INPUT){
+			 if(_digitalPinMode[pin] == PinMode::DIGITAL_INPUT){
 				 if(_digitalHistory[pin].size() > 0){
 					 previous = _digitalHistory[pin].front();
 				 }
@@ -642,7 +622,7 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value){
 		 for(i = 0; i < port1Pins; ++i){
 			 pin = i + 8;
 			 previous = -1;
-			 if(_digitalPinMode[pin] == ARD_INPUT){
+			 if(_digitalPinMode[pin] == PinMode::DIGITAL_INPUT){
 				 if(_digitalHistory[pin].size() > 0){
 					 previous = _digitalHistory[pin].front();
 				 }
@@ -667,7 +647,7 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value){
 			 //pin = i+analogOffset;
 			 pin = i + 16;
 			 previous = -1;
-			 if(_digitalPinMode[pin] == ARD_INPUT){
+			 if(_digitalPinMode[pin] == PinMode::DIGITAL_INPUT){
 				 if(_digitalHistory[pin].size() > 0){
 					 previous = _digitalHistory[pin].front();
 				 }
@@ -695,7 +675,7 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value){
 //         all analog reporting will be turned off if this is set to ARD_ON
 
 void ofxFirmata::sendDigitalPortReporting(int port, int mode){
-	sendByte(FIRMATA_REPORT_DIGITAL + port);
+	sendByte((int)MessageType::REPORT_DIGITAL_PORT + port);
 	sendByte(mode);
 	_digitalPortReporting[port] = mode;
 	int offset;
@@ -806,20 +786,20 @@ int ofxFirmata::getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb){
 void ofxFirmata::sendServo(int pin, int value, bool force){
 	// for firmata v2.2 and greater
 	if(_firmwareVersionSum >= FIRMWARE2_2){
-		if(_digitalPinMode[pin] == ARD_SERVO && (_digitalPinValue[pin] != value || force)){
-			sendByte(FIRMATA_ANALOG_MESSAGE + pin);
+		if(_digitalPinMode[pin] == PinMode::SERVO && (_digitalPinValue[pin] != value || force)){
+			sendByte((int)MessageType::ANALOG_IO_MESSAGE + pin);
 			sendValueAsTwo7bitBytes(value);
 			_digitalPinValue[pin] = value;
 		}
 	}
 	// for versions prior to 2.2
 	else{
-		if(_digitalPinMode[pin] == ARD_SERVO && (_servoValue[pin] != value || force)){
-			sendByte(FIRMATA_START_SYSEX);
+		if(_digitalPinMode[pin] == PinMode::SERVO && (_servoValue[pin] != value || force)){
+			sendByte(MessageType::START_SYSEX);
 			sendByte(SYSEX_SERVO_WRITE);
 			sendByte(pin);
 			sendValueAsTwo7bitBytes(value);
-			sendByte(FIRMATA_END_SYSEX);
+			sendByte(MessageType::END_SYSEX);
 			_servoValue[pin] = value;
 		}
 	}
@@ -827,7 +807,7 @@ void ofxFirmata::sendServo(int pin, int value, bool force){
 
 // angle parameter is no longer supported. keeping for backwards compatibility
 void ofxFirmata::sendServoAttach(int pin, int minPulse, int maxPulse, int angle){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 	// for firmata v2.2 and greater
 	if(_firmwareVersionSum >= FIRMWARE2_2){
 		sendByte(FIRMATA_SYSEX_SERVO_CONFIG);
@@ -839,21 +819,21 @@ void ofxFirmata::sendServoAttach(int pin, int minPulse, int maxPulse, int angle)
 	sendByte(pin);
 	sendValueAsTwo7bitBytes(minPulse);
 	sendValueAsTwo7bitBytes(maxPulse);
-	sendByte(FIRMATA_END_SYSEX);
-	_digitalPinMode[pin] = ARD_SERVO;
+	sendByte(MessageType::END_SYSEX);
+	_digitalPinMode[pin] = PinMode::SERVO;
 }
 
 // sendServoDetach depricated as of Firmata 2.2
 void ofxFirmata::sendServoDetach(int pin){
-	sendByte(FIRMATA_START_SYSEX);
+	sendByte(MessageType::START_SYSEX);
 	sendByte(SYSEX_SERVO_DETACH);
 	sendByte(pin);
-	sendByte(FIRMATA_END_SYSEX);
-	_digitalPinMode[pin] = ARD_OUTPUT;
+	sendByte(MessageType::END_SYSEX);
+	_digitalPinMode[pin] = PinMode::DIGITAL_OUTPUT;
 }
 
 int ofxFirmata::getServo(int pin) const {
-	if(_digitalPinMode[pin] == ARD_SERVO){
+	if(_digitalPinMode[pin] == PinMode::SERVO){
 		// for firmata v2.2 and greater
 		if(_firmwareVersionSum >= FIRMWARE2_2){
 			return _digitalPinValue[pin];
