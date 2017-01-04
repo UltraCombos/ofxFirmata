@@ -269,7 +269,6 @@ void ofxFirmata::sendDigital(int pin, int value, bool force){
 
 		sendByte((int)MessageType::DIGITAL_IO_MESSAGE + port);
 		sendValueAsTwo7bitBytes(_digitalPortValue[port]);
-
 	}
 }
 
@@ -303,7 +302,7 @@ void ofxFirmata::sendSysExEnd(){
 
 void ofxFirmata::sendString(string str){
 	sendByte(MessageType::START_SYSEX);
-	sendByte(FIRMATA_SYSEX_FIRMATA_STRING);
+	sendByte(MessageType::STRING_DATA);
 	string::iterator it = str.begin();
 	while(it != str.end()){
 		sendValueAsTwo7bitBytes(*it);
@@ -318,7 +317,7 @@ void ofxFirmata::sendProtocolVersionRequest(){
 
 void ofxFirmata::sendFirmwareVersionRequest(){
 	sendByte(MessageType::START_SYSEX);
-	sendByte(FIRMATA_SYSEX_REPORT_FIRMWARE);
+	sendByte(MessageType::REPORT_FIRMWARE);
 	sendByte(MessageType::END_SYSEX);
 }
 
@@ -510,27 +509,29 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 
 	string str;
 
-	vector <unsigned char>::iterator it;
+	vector <unsigned char>::iterator it = data.begin();
+
+	auto next_char = [&]()
+	{
+		unsigned char& c = *it;
+		it++;
+		return c;
+	};
+
 	unsigned char buffer;
-	//int i = 1;
 
 	// act on reserved sysEx messages (extended commands) or trigger SysEx event...
-	switch(data.front()){  //first byte in buffer is command
-	 case FIRMATA_SYSEX_REPORT_FIRMWARE:
-		 it = data.begin();
-		 it++;    // skip the first byte, which is the firmware version command
-		 _majorFirmwareVersion = *it;
-		 it++;
-		 _minorFirmwareVersion = *it;
-		 it++;
+	switch(next_char()){  //first byte in buffer is command
+	 case MessageType::REPORT_FIRMWARE:
+		 _majorFirmwareVersion = next_char();
+		 _minorFirmwareVersion = next_char();
 
 		 while(it != data.end()){
-			 buffer = *it;
-			 it++;
-			 buffer += *it << 7;
-			 it++;
+			 buffer = next_char(); 
+			 buffer += next_char() << 7;
 			 str += buffer;
 		 }
+
 		 _firmwareName = str;
 
 		 _firmwareVersionSum = _majorFirmwareVersion * 10 + _minorFirmwareVersion;
@@ -540,19 +541,13 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 		 if(!_initialized){
 			 initPins();
 			 ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
-
 		 }
-
 		 break;
 
-	 case FIRMATA_SYSEX_FIRMATA_STRING:
-		 it = data.begin();
-		 it++;    // skip the first byte, which is the string command
+	 case MessageType::STRING_DATA:
 		 while(it != data.end()){
-			 buffer = *it;
-			 it++;
-			 buffer += *it << 7;
-			 it++;
+			 buffer = next_char();
+			 buffer += next_char() << 7;
 			 str += buffer;
 		 }
 
@@ -810,7 +805,7 @@ void ofxFirmata::sendServoAttach(int pin, int minPulse, int maxPulse, int angle)
 	sendByte(MessageType::START_SYSEX);
 	// for firmata v2.2 and greater
 	if(_firmwareVersionSum >= FIRMWARE2_2){
-		sendByte(FIRMATA_SYSEX_SERVO_CONFIG);
+		sendByte(MessageType::SERVO_CONFIG);
 	}
 	// for versions prior to 2.2
 	else{

@@ -40,20 +40,61 @@
 #define FIRMATA_MAJOR_VERSION                          2 // for non-compatible changes
 #define FIRMATA_MINOR_VERSION                          0 // for backwards compatible changes
 #define FIRMATA_MAX_DATA_BYTES                        32 // max number of data bytes in non-Sysex messages
+
+#undef ANALOG_MAPPING_QUERY
+#undef ANALOG_MAPPING_RESPONSE
+#undef CAPABILITY_QUERY
+#undef CAPABILITY_RESPONSE
+#undef PIN_STATE_QUERY        
+#undef PIN_STATE_RESPONSE     
+#undef EXTENDED_ANALOG
+#undef SHIFT_DATA
+#undef I2C_REQUEST
+#undef I2C_REPLY
+#undef I2C_CONFIG
+#undef SAMPLING_INTERVAL
+
 // message command bytes (128-255/0x80-0xFF)
 enum class MessageType
 {
-	ANALOG_IO_MESSAGE     = 0xE0, // send data for an analog pin (or PWM)
-	DIGITAL_IO_MESSAGE    = 0x90, // send data for a digital pin
-	REPORT_ANALOG_PIN     = 0xC0, // enable analog input by pin #
-	REPORT_DIGITAL_PORT   = 0xD0, // enable digital input by port pair
-	//				      
-	START_SYSEX           = 0xF0, // start a MIDI Sysex message
-	SET_PIN_MODE          = 0xF4, // set a pin to INPUT/OUTPUT/PWM/etc
-	SET_DIGITAL_PIN_VALUE = 0xF5, // set a pin to INPUT/OUTPUT/PWM/etc
-	END_SYSEX             = 0xF7, // end a MIDI Sysex message
-	PROTOCOL_VERSION      = 0xF9, // report protocol version 	major version	minor version
-	SYSTEM_RESET          = 0xFF, // reset from MIDI
+	// extended command set using SysEx (0-127/0x00-0x7F)
+	/* 0x00-0x0F reserved for custom commands */
+	ANALOG_MAPPING_QUERY    = 0x69, // ask for mapping of analog to pin numbers
+	ANALOG_MAPPING_RESPONSE = 0x6A, // reply with mapping info
+	CAPABILITY_QUERY        = 0x6B, // ask for supported modes and resolution of all pins
+	CAPABILITY_RESPONSE     = 0x6C, // reply with supported modes and resolution
+	PIN_STATE_QUERY         = 0x6D, // ask for a pin's current mode and value
+	PIN_STATE_RESPONSE      = 0x6E, // reply with pin's current mode and value
+	EXTENDED_ANALOG         = 0x6F, // analog write (PWM, Servo, etc) to any pin
+	//
+	SERVO_CONFIG            = 0x70, // set max angle, minPulse, maxPulse, freq
+	STRING_DATA             = 0x71, // a string message with 14-bits per char
+	//
+	SHIFT_DATA              = 0x75, // a bitstram to/from a shift register
+	I2C_REQUEST             = 0x76, // send an I2C read/write request
+	I2C_REPLY               = 0x77, // a reply to an I2C request
+	I2C_CONFIG              = 0x78, // config I2C settings such as delay times and power pins
+	REPORT_FIRMWARE         = 0x79, // report name and version of the firmware
+	//
+	SAMPLING_INTERVAL       = 0x7A, // set the poll rate of the main loop
+	//
+	//SYSEX_NON_REALTIME      = 0x7E, // MIDI Reserved for non-realtime messages
+	//SYSEX_REALTIME          = 0x7F, // MIDI Reserved for realtime messages
+	//
+	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM)
+	DIGITAL_IO_MESSAGE      = 0x90, // send data for a digital pin
+	REPORT_ANALOG_PIN       = 0xC0, // enable analog input by pin #
+	REPORT_DIGITAL_PORT     = 0xD0, // enable digital input by port pair
+	//				        
+	START_SYSEX             = 0xF0, // start a MIDI Sysex message
+	//					    
+	SET_PIN_MODE            = 0xF4, // set a pin to INPUT/OUTPUT/PWM/etc
+	SET_DIGITAL_PIN_VALUE   = 0xF5, // set a pin to INPUT/OUTPUT/PWM/etc
+	//					    
+	END_SYSEX               = 0xF7, // end a MIDI Sysex message
+	PROTOCOL_VERSION        = 0xF9, // report protocol version 	major version	minor version
+	//					    
+	SYSTEM_RESET            = 0xFF, // reset from MIDI
 };
 
 //MessageType::
@@ -84,26 +125,6 @@ enum class DigitalValue
 	HIGH = 1
 };
 
-// extended command set using SysEx (0-127/0x00-0x7F)
-/* 0x00-0x0F reserved for custom commands */
-#define FIRMATA_SYSEX_SERVO_CONFIG                    0x70 // set max angle, minPulse, maxPulse, freq
-#define FIRMATA_SYSEX_FIRMATA_STRING                  0x71 // a string message with 14-bits per char
-#define SHIFT_DATA                                    0x75 // a bitstram to/from a shift register
-#define I2C_REQUEST                                   0x76 // send an I2C read/write request
-#define I2C_REPLY                                     0x77 // a reply to an I2C request
-#define I2C_CONFIG                                    0x78 // config I2C settings such as delay times and power pins
-#define EXTENDED_ANALOG                               0x6F // analog write (PWM, Servo, etc) to any pin
-#define PIN_STATE_QUERY                               0x6D // ask for a pin's current mode and value
-#define PIN_STATE_RESPONSE                            0x6E // reply with pin's current mode and value
-#define CAPABILITY_QUERY                              0x6B // ask for supported modes and resolution of all pins
-#define CAPABILITY_RESPONSE                           0x6C // reply with supported modes and resolution
-#define ANALOG_MAPPING_QUERY                          0x69 // ask for mapping of analog to pin numbers
-#define ANALOG_MAPPING_RESPONSE                       0x6A // reply with mapping info
-#define FIRMATA_SYSEX_REPORT_FIRMWARE                 0x79 // report name and version of the firmware
-#define SAMPLING_INTERVAL                             0x7A // set the poll rate of the main loop
-#define FIRMATA_SYSEX_NON_REALTIME                    0x7E // MIDI Reserved for non-realtime messages
-#define FIRMATA_SYSEX_REALTIME                        0x7F // MIDI Reserved for realtime messages
-
 // ---- arduino constants (for Arduino NG and Diecimila)
 
 // board settings
@@ -114,30 +135,6 @@ enum class DigitalValue
 #define ARD_ON                                        1
 #define ARD_OFF                                       0
 
-/*
- #if defined(__AVR_ATmega168__)  // Arduino NG and Diecimila
- #define ARD_TOTAL_ANALOG_PINS	   8
- #define ARD_TOTAL_DIGITAL_PINS	  22 // 14 digital + 8 analog
- #define ARD_TOTAL_PORTS			 3 // total number of ports for the board
- #define ARD_ANALOG_PORT			 2 // port# of analog used as digital
- #elif defined(__AVR_ATmega8__)  // old Arduinos
- #define ARD_TOTAL_ANALOG_PINS	   6
- #define ARD_TOTAL_DIGITAL_PINS	  20 // 14 digital + 6 analog
- #define ARD_TOTAL_PORTS			 3  // total number of ports for the board
- #define ARD_ANALOG_PORT			 2  // port# of analog used as digital
- #elif defined(__AVR_ATmega128__)// Wiring
- #define ARD_TOTAL_ANALOG_PINS	   8
- #define ARD_TOTAL_DIGITAL_PINS	  43
- #define ARD_TOTAL_PORTS			 5 // total number of ports for the board
- #define ARD_ANALOG_PORT			 2 // port# of analog used as digital
- #else // anything else
- #define ARD_TOTAL_ANALOG_PINS	   6
- #define ARD_TOTAL_DIGITAL_PINS	  14
- #define ARD_TOTAL_PORTS			 3 // total number of ports for the board
- #define ARD_ANALOG_PORT			 2 // port# of analog used as digital
- #endif
- */
-
 // DEPRECATED as of firmata v2.2
 #define SYSEX_SERVO_ATTACH                    0x00
 #define SYSEX_SERVO_DETACH                    0x01
@@ -145,7 +142,7 @@ enum class DigitalValue
 
 #define OF_ARDUINO_DELAY_LENGTH                 4.0
 
-#define FIRMWARE2_2                             22
+#define FIRMWARE2_2                          22
 #define FIRMWARE2_3                          23
 
 
