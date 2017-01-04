@@ -37,9 +37,9 @@
  * software can test whether it will be compatible with the currently installed firmware.
  */
 
-#define FIRMATA_MAJOR_VERSION                          2 // for non-compatible changes
-#define FIRMATA_MINOR_VERSION                          0 // for backwards compatible changes
-#define FIRMATA_MAX_DATA_BYTES                        32 // max number of data bytes in non-Sysex messages
+#define FIRMATA_MAJOR_VERSION   2 // for non-compatible changes
+#define FIRMATA_MINOR_VERSION   0 // for backwards compatible changes
+#define FIRMATA_MAX_DATA_BYTES 32 // max number of data bytes in non-Sysex messages
 
 #undef ANALOG_MAPPING_QUERY
 #undef ANALOG_MAPPING_RESPONSE
@@ -78,10 +78,10 @@ enum class MessageType
 	//
 	SAMPLING_INTERVAL       = 0x7A, // set the poll rate of the main loop
 	//
-	//SYSEX_NON_REALTIME      = 0x7E, // MIDI Reserved for non-realtime messages
-	//SYSEX_REALTIME          = 0x7F, // MIDI Reserved for realtime messages
+	//SYSEX_NON_REALTIME    = 0x7E, // MIDI Reserved for non-realtime messages
+	//SYSEX_REALTIME        = 0x7F, // MIDI Reserved for realtime messages
 	//
-	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM)
+	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM) use EXTENDED_ANALOG instead
 	DIGITAL_IO_MESSAGE      = 0x90, // send data for a digital pin
 	REPORT_ANALOG_PIN       = 0xC0, // enable analog input by pin #
 	REPORT_DIGITAL_PORT     = 0xD0, // enable digital input by port pair
@@ -97,14 +97,13 @@ enum class MessageType
 	SYSTEM_RESET            = 0xFF, // reset from MIDI
 };
 
-//MessageType::
-
 #undef SHIFT
 #undef I2C
 
 // pin modes
 enum class PinMode
 {
+	_NULL          = -1,
 	DIGITAL_INPUT  = 0x00,
 	DIGITAL_OUTPUT = 0x01,
 	ANALOG_INPUT   = 0x02,
@@ -128,22 +127,12 @@ enum class DigitalValue
 // ---- arduino constants (for Arduino NG and Diecimila)
 
 // board settings
-#define ARD_TOTAL_DIGITAL_PINS                        22 // total number of pins currently supported
-#define ARD_TOTAL_ANALOG_PINS                         6
-#define ARD_TOTAL_PORTS                               3 // total number of ports for the board
-// pin modes
-#define ARD_ON                                        1
-#define ARD_OFF                                       0
+#define ARD_TOTAL_PORTS         3 // total number of ports for the board
 
-// DEPRECATED as of firmata v2.2
-#define SYSEX_SERVO_ATTACH                    0x00
-#define SYSEX_SERVO_DETACH                    0x01
-#define SYSEX_SERVO_WRITE                      0x02
+#define OF_ARDUINO_DELAY_LENGTH 4.0
 
-#define OF_ARDUINO_DELAY_LENGTH                 4.0
-
-#define FIRMWARE2_2                          22
-#define FIRMWARE2_3                          23
+#define FIRMWARE2_2             22
+#define FIRMWARE2_3             23
 
 
 /// \brief This is a way to control an Arduino that has had the firmata library
@@ -170,7 +159,6 @@ class ofxFirmata {
 	public:
 		/// \name Constructor and Destructor
 		/// \{
-
 		ofxFirmata();
 
 		virtual ~ofxFirmata();
@@ -214,7 +202,7 @@ class ofxFirmata {
 		/// reporting will be turned off
 		void sendDigitalPinMode(int pin, PinMode mode);
 
-		void sendAnalogPinReporting(int pin, int mode);
+		void sendAnalogPinReporting(int pin, bool reporting);
 		// pin: 0-5
 		// mode: ARD_ON or ARD_OFF
 		// Note: analog pins 0-5 can be used as digitial pins 16-21 but if reporting for _one_ analog pin is enabled then reporting for _all_ of digital pin 16-21 will be turned off
@@ -230,12 +218,11 @@ class ofxFirmata {
 		/// \name Senders
 		/// \{
 
-		void sendDigital(int pin, int value, bool force = false);
+		void sendDigital(int pin, DigitalValue value, bool force = false);
 		// pin: 2-13
 		// value: ARD_LOW or ARD_HIGH
 		// the pins mode has to be set to ARD_OUTPUT or ARD_INPUT (in the latter mode pull-up resistors are enabled/disabled)
 		// Note: pin 16-21 can also be used if analog inputs 0-5 are used as digital pins
-
 
 		void sendPwm(int pin, int value, bool force = false);
 
@@ -253,8 +240,9 @@ class ofxFirmata {
 
 		void sendProtocolVersionRequest();
 
+protected:
 		void sendFirmwareVersionRequest();
-
+public:
 		/// \brief This will cause your Arduino to reset and boot into the program again.
 		void sendReset();
 
@@ -358,7 +346,7 @@ class ofxFirmata {
 		PinMode getDigitalPinMode(int pin) const;
 
 		/// \returns `ARD_ON` or `ARD_OFF`
-		int getAnalogPinReporting(int pin) const;
+		bool getAnalogPinReporting(int pin) const;
 
 		/// \brief Useful for parsing SysEx messages
 		int getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb);
@@ -408,11 +396,7 @@ class ofxFirmata {
 		void sendServo(int pin, int value, bool force = false);
 
 		/// \param angle parameter DEPRECATED as of Firmata 2.2
-		void sendServoAttach(int pin, int minPulse = 544, int maxPulse = 2400, int angle = 180);
-
-		/// \brief Detaches a servo on a pin
-		/// \note sendServoDetach DEPRECATED as of Firmata 2.2
-		void sendServoDetach(int pin);
+		void sendServoConfig(int pin, int minPulse = 544, int maxPulse = 2400);
 
 		/// \returns the last set servo value for a pin if the pin has a servo attached.
 		int getServo(int pin) const;
@@ -423,13 +407,12 @@ class ofxFirmata {
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
 
 		void initPins() const;
-		mutable int _totalDigitalPins = 0; ///\< \brief Indicate the total number of digital pins of the board in use.
 
-		void sendDigitalPinReporting(int pin, int mode);
+		void sendDigitalPinReporting(int pin, bool reporting);
 		// sets pin reporting to ARD_ON or ARD_OFF
 		// enables / disables reporting for the pins port
 
-		void sendDigitalPortReporting(int port, int mode);
+		void sendDigitalPortReporting(int port, bool mode);
 		// sets port reporting to ARD_ON or ARD_OFF
 		// enables / disables reporting for ports 0-2
 		// port 0: pins 2-7  (0,1 are serial RX/TX)
@@ -476,29 +459,29 @@ class ofxFirmata {
 		using PinCapability = map<PinMode, PinResolution>;
 		vector<PinCapability> _pin_capabilites;
 
+		struct AnalogPin
+		{
+			int digitalPinNum = -1;
+			int value = -1;
+			bool reporting = false;
+			list <int> history;
+		};
 
-		mutable list <int> _analogHistory[ARD_TOTAL_ANALOG_PINS];
-		// a history of received data for each analog pin
-		 
-		mutable list <int> _digitalHistory[ARD_TOTAL_DIGITAL_PINS];
-		// a history of received data for each digital pin
+		struct DigitalPin
+		{
+			PinMode mode = PinMode::_NULL;
+			int value = -1;
+			bool reporting = false;
+			list <int> history;
+		};
 
-		mutable PinMode _digitalPinMode[ARD_TOTAL_DIGITAL_PINS];
-		// the modes for all digital pins
-
-		mutable int _digitalPinValue[ARD_TOTAL_DIGITAL_PINS];
-		// the last set values (DIGITAL/PWM) on all digital pins
-
-		mutable int _digitalPortValue[ARD_TOTAL_PORTS];
+		vector<AnalogPin> _analog_pins;
+		mutable vector<DigitalPin> _digital_pins;
+		
+		mutable vector<int> _digitalPortValue;
 		// the last set values on all ports
 
-		mutable int _digitalPortReporting[ARD_TOTAL_PORTS];
-		// whether pin reporting is enabled / disabled
-
-		mutable int _digitalPinReporting[ARD_TOTAL_DIGITAL_PINS];
-		// whether pin reporting is enabled / disabled
-
-		mutable int _analogPinReporting[ARD_TOTAL_ANALOG_PINS];
+		mutable vector<bool> _digitalPortReporting;
 		// whether pin reporting is enabled / disabled
 
 		bool bUseDelay = true;
@@ -507,15 +490,102 @@ class ofxFirmata {
 
 		float connectTime = 0.0f; ///< \brief This represents the (running) time of establishing a serial connection.
 
-		mutable int _servoValue[ARD_TOTAL_DIGITAL_PINS];
 		// the last set servo values
-		void sendByte(MessageType msg) {
+		void sendByte(MessageType msg)
+		{
 			sendByte((int)msg);
 		}
-
 		void sendCapabilityQuery()
 		{
 			sendSysEx(MessageType::CAPABILITY_QUERY);
+		}
+		void sendAnalogMappingQuery()
+		{
+			sendSysEx(MessageType::ANALOG_MAPPING_QUERY);
+		}
+		void sendExtendedAnalog(int pin, int value)
+		{
+			sendSysExBegin();
+			sendByte(MessageType::EXTENDED_ANALOG);
+			sendByte(pin);
+			sendValueAsTwo7bitBytes(value);
+			sendSysExEnd();
+		}
+		void sendPinStateQuery(int pin)
+		{
+			sendSysExBegin();
+			sendByte(MessageType::PIN_STATE_QUERY);
+			sendByte(pin);
+			sendSysExEnd();
+		}
+		void tryInit()
+		{
+			if(_minorFirmwareVersion == 0 && _majorFirmwareVersion == 0)
+				sendFirmwareVersionRequest();
+
+			if(_pin_capabilites.size() == 0)
+				sendCapabilityQuery();
+
+			if(_analog_pins.size() == 0)
+				sendAnalogMappingQuery();
+
+			if (_minorFirmwareVersion != 0 && 
+				_majorFirmwareVersion != 0 && 
+				_pin_capabilites.size() != 0 && 
+				_analog_pins.size() != 0)
+			{
+				for (int i = 0; i < _pin_capabilites.size(); i++)
+				{
+					sendPinStateQuery(i);
+				}
+				initPins();
+				ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
+			}
+		}
+		string PinModeToString(PinMode mode)
+		{
+			switch (mode)
+			{
+			case PinMode::DIGITAL_INPUT:
+				return "DIGITAL_INPUT";
+				break;
+			case PinMode::DIGITAL_OUTPUT:
+				return "DIGITAL_OUTPUT";
+				break;
+			case PinMode::ANALOG_INPUT:
+				return "ANALOG_INPUT";
+				break;
+			case PinMode::PWM:
+				return "PWM";
+				break;
+			case PinMode::SERVO:
+				return "SERVO";
+				break;
+			case PinMode::SHIFT:
+				return "SHIFT";
+				break;
+			case PinMode::I2C:
+				return "I2C";
+				break;
+			case PinMode::ONEWIRE:
+				return "ONEWIRE";
+				break;
+			case PinMode::STEPPER:
+				return "STEPPER";
+				break;
+			case PinMode::ENCODER:
+				return "ENCODER";
+				break;
+			case PinMode::SERIAL:
+				return "SERIAL";
+				break;
+			case PinMode::INPUT_PULLUP:
+				return "INPUT_PULLUP";
+				break;
+			default:
+				return "_NULL";
+				break;
+			}
 		}
 };
 
