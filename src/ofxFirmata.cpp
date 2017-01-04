@@ -280,16 +280,15 @@ void ofxFirmata::sendPwm(int pin, int value, bool force){
 	}
 }
 
-void ofxFirmata::sendSysEx(int command, vector <unsigned char> data){
-	sendByte(MessageType::START_SYSEX);
+void ofxFirmata::sendSysEx(MessageType command, vector <unsigned char> data){
+	sendSysExBegin();
 	sendByte(command);
 	vector <unsigned char>::iterator it = data.begin();
 	while(it != data.end()){
-		//sendByte(*it);	// need to split data into 2 bytes before sending
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
-	sendByte(MessageType::END_SYSEX);
+	sendSysExEnd();
 }
 
 void ofxFirmata::sendSysExBegin(){
@@ -316,9 +315,7 @@ void ofxFirmata::sendProtocolVersionRequest(){
 }
 
 void ofxFirmata::sendFirmwareVersionRequest(){
-	sendByte(MessageType::START_SYSEX);
-	sendByte(MessageType::REPORT_FIRMWARE);
-	sendByte(MessageType::END_SYSEX);
+	sendSysEx(MessageType::REPORT_FIRMWARE);
 }
 
 void ofxFirmata::sendReset(){
@@ -513,6 +510,9 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 
 	auto next_char = [&]()
 	{
+		if (it == data.end())
+			return (unsigned char)127;
+
 		unsigned char& c = *it;
 		it++;
 		return c;
@@ -521,51 +521,74 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 	unsigned char buffer;
 
 	// act on reserved sysEx messages (extended commands) or trigger SysEx event...
-	switch(next_char()){  //first byte in buffer is command
-	 case MessageType::REPORT_FIRMWARE:
-		 _majorFirmwareVersion = next_char();
-		 _minorFirmwareVersion = next_char();
+	switch (next_char()) {  //first byte in buffer is command
+	case MessageType::REPORT_FIRMWARE:
+		_majorFirmwareVersion = next_char();
+		_minorFirmwareVersion = next_char();
 
-		 while(it != data.end()){
-			 buffer = next_char(); 
-			 buffer += next_char() << 7;
-			 str += buffer;
-		 }
+		while (it != data.end()) {
+			buffer = next_char();
+			buffer += next_char() << 7;
+			str += buffer;
+		}
 
-		 _firmwareName = str;
+		_firmwareName = str;
 
-		 _firmwareVersionSum = _majorFirmwareVersion * 10 + _minorFirmwareVersion;
-		 ofNotifyEvent(EFirmwareVersionReceived, _majorFirmwareVersion, this);
+		_firmwareVersionSum = _majorFirmwareVersion * 10 + _minorFirmwareVersion;
+		ofNotifyEvent(EFirmwareVersionReceived, _majorFirmwareVersion, this);
 
-		 // trigger the initialization event
-		 if(!_initialized){
-			 initPins();
-			 ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
-		 }
-		 break;
+		// trigger the initialization event
+		if (!_initialized) {
+			initPins();
+			ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
+		}
+		sendCapabilityQuery();
+		break;
 
-	 case MessageType::STRING_DATA:
-		 while(it != data.end()){
-			 buffer = next_char();
-			 buffer += next_char() << 7;
-			 str += buffer;
-		 }
+	case MessageType::STRING_DATA:
+		while (it != data.end()) {
+			buffer = next_char();
+			buffer += next_char() << 7;
+			str += buffer;
+		}
 
-		 _stringHistory.push_front(str);
-		 if((int)_stringHistory.size() > _stringHistoryLength){
-			 _stringHistory.pop_back();
-		 }
+		_stringHistory.push_front(str);
+		if ((int)_stringHistory.size() > _stringHistoryLength) {
+			_stringHistory.pop_back();
+		}
 
-		 ofNotifyEvent(EStringReceived, str, this);
-		 break;
+		ofNotifyEvent(EStringReceived, str, this);
+		break;
+	case MessageType::CAPABILITY_RESPONSE:
+	{
+		_pin_capabilites.clear();
+		_pin_capabilites.emplace_back(map<PinMode, int>());
+		while (it != data.end())
+		{
+			auto c = next_char();
+			if (c == 0x7f)
+			{
+				_pin_capabilites.emplace_back(map<PinMode, int>());
+			}
+			else
+			{
+				PinMode pinmode = (PinMode)c;
+				int resolution = 1 << (next_char() - 1);
+				printf("pin %d: mode[%d] resolution[%d]\n", _pin_capabilites.size() - 1, (int)pinmode, resolution);
+				_pin_capabilites.back()[pinmode] = resolution;
+			}
+		}
+		_pin_capabilites.pop_back();
+	}
 
-	 default:    // the message isn't in Firmatas extended command set
-		 _sysExHistory.push_front(data);
-		 if((int)_sysExHistory.size() > _sysExHistoryLength){
-			 _sysExHistory.pop_back();
-		 }
-		 ofNotifyEvent(ESysExReceived, data, this);
-		 break;
+	break;
+	default:    // the message isn't in Firmatas extended command set
+		_sysExHistory.push_front(data);
+		if ((int)_sysExHistory.size() > _sysExHistoryLength) {
+			_sysExHistory.pop_back();
+		}
+		ofNotifyEvent(ESysExReceived, data, this);
+		break;
 
 	}
 }

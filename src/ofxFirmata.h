@@ -239,7 +239,13 @@ class ofxFirmata {
 
 		void sendPwm(int pin, int value, bool force = false);
 
-		void sendSysEx(int command, vector <unsigned char> data);
+		void sendSysEx(MessageType command, vector <unsigned char> data);
+		void sendSysEx(MessageType command)
+		{
+			sendByte(MessageType::START_SYSEX);
+			sendByte(command);
+			sendByte(MessageType::END_SYSEX);
+		}
 
 		/// \brief Send a string to the Arduino
 		/// \note Firmata can not handle strings longer than 12 characters.
@@ -466,9 +472,14 @@ class ofxFirmata {
 		list <string> _stringHistory;
 		// maintains a history of received strings
 
+		using PinResolution = int;
+		using PinCapability = map<PinMode, PinResolution>;
+		vector<PinCapability> _pin_capabilites;
+
+
 		mutable list <int> _analogHistory[ARD_TOTAL_ANALOG_PINS];
 		// a history of received data for each analog pin
-
+		 
 		mutable list <int> _digitalHistory[ARD_TOTAL_DIGITAL_PINS];
 		// a history of received data for each digital pin
 
@@ -500,6 +511,11 @@ class ofxFirmata {
 		// the last set servo values
 		void sendByte(MessageType msg) {
 			sendByte((int)msg);
+		}
+
+		void sendCapabilityQuery()
+		{
+			sendSysEx(MessageType::CAPABILITY_QUERY);
 		}
 };
 
