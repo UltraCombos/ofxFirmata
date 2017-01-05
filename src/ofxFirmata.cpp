@@ -281,48 +281,89 @@ void ofxFirmata::sendReset() {
 	sendByte(MessageType::SYSTEM_RESET);
 }
 
-void ofxFirmata::sendAnalogPinReporting(int pinNum, bool reporting) {
+void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrategy, bool force /*=false*/) {
 	if (pinNum >= _analog_pins.size())
+		return;
+
+	if (_analog_pins[pinNum].reportStrategy == reportStrategy && !force)
 		return;
 
 	int d_pin = _analog_pins[pinNum].digitalPinNum;
 	DigitalPin& pin = _digital_pins[d_pin];
 
 	// if this analog pin is set as a digital input, disable digital pin reporting
-	if (pin.reporting == true) {
-		sendDigitalPinReporting(d_pin, false);
+	if (pin.reportStrategy != ReportStrategy::None) {
+		sendDigitalPinReporting(d_pin, ReportStrategy::None);
 	}
 
 	pin.mode = PinMode::ANALOG_INPUT;
 
 	sendByte((int)MessageType::REPORT_ANALOG_PIN + pinNum);
-	sendByte(reporting);
+	if(reportStrategy != ReportStrategy::None)
+		sendByte(1);
+	else
+		sendByte(0);
 
-	_analog_pins[pinNum].reporting = reporting;
+	_analog_pins[pinNum].reportStrategy = reportStrategy;
 }
 
-void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode) {
+void ofxFirmata::sendDigitalPinReporting(int pin, ReportStrategy reportStrategy) {
+	_digital_pins[pin].reportStrategy = reportStrategy;
+
+	sendDigitalPinMode(pin, PinMode::DIGITAL_INPUT);
+
+	int port = pin / 8;
+
+	//sendDigitalPinMode(pin, PinMode::DIGITAL_INPUT);
+	//sendPinStateQuery(pin);
+
+	if (reportStrategy != ReportStrategy::None) {
+		sendDigitalPortReporting(port, true);
+// 		sendDigitalPortReporting(0, true);
+// 		sendDigitalPortReporting(1, true);
+// 		sendDigitalPortReporting(2, true);
+// 		sendDigitalPortReporting(3, true);
+// 		sendDigitalPortReporting(4, true);
+// 		sendDigitalPortReporting(5, true);
+	}
+	else {
+		bool send = true;
+		for (int i = port * 8; i < port * 8 + 8; ++i) {
+			if (_digital_pins[i].reportStrategy != ReportStrategy::None) {
+				send = false;
+			}
+		}
+		if (send) {
+			sendDigitalPortReporting(port, false);
+		}
+	}
+}
+
+void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode, bool force /*=false*/) {
+	if (_digital_pins[pin].mode == mode && !force)
+		return;
+
 	sendByte(MessageType::SET_PIN_MODE);
 	sendByte(pin);
 	sendByte((int)mode);
 	_digital_pins[pin].mode = mode;
 
-	// turn on or off reporting on the port
-	if (mode == PinMode::DIGITAL_INPUT) {
-		sendDigitalPinReporting(pin, true);
-	}
-	else {
-		sendDigitalPinReporting(pin, false);
-	}
+// 	// turn on or off reporting on the port
+// 	if (mode == PinMode::DIGITAL_INPUT) {
+// 		sendDigitalPinReporting(pin, true);
+// 	}
+// 	else {
+// 		sendDigitalPinReporting(pin,  ReportStrategy::None);
+// 	}
 }
 
-bool ofxFirmata::getAnalogPinReporting(int pin) const {
+ofxFirmata::ReportStrategy ofxFirmata::getAnalogPinReporting(int pin) const {
 	if (pin <= _analog_pins.size())
 	{
 		ofLogWarning("");
-		return false;
+		return ReportStrategy::None;
 	}
-	return _analog_pins[pin].reporting;
+	return _analog_pins[pin].reportStrategy;
 }
 
 list <int> * ofxFirmata::getAnalogHistory(int pin) {
@@ -384,7 +425,7 @@ void ofxFirmata::processData(unsigned char inputData) {
 		if (_waitForData == 0) {
 			switch (_executeMultiByteCommand) {
 			case MessageType::DIGITAL_IO_MESSAGE:
-				processDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
+				updateDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
 				break;
 
 			case MessageType::PROTOCOL_VERSION:    // report version
@@ -394,29 +435,17 @@ void ofxFirmata::processData(unsigned char inputData) {
 				break;
 
 			case MessageType::ANALOG_IO_MESSAGE:
-				if (_multiByteChannel >= _analog_pins.size())
+			{
+				int pinNum = _multiByteChannel;
+				int value = (_storedInputData[0] << 7) | _storedInputData[1];
+				if (pinNum >= _analog_pins.size())
 					break;
-				list <int>& history = _analog_pins[_multiByteChannel].history;
-				if (history.size() > 0) {
-					int previous = history.front();
+				_updateAnalogPin(pinNum, value);
 
-					history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
-					if ((int)history.size() > _analogHistoryLength) {
-						history.pop_back();
-					}
-
-					// trigger an event if the pin has changed value
-					if (history.front() != previous) {
-						ofNotifyEvent(EAnalogPinChanged, _multiByteChannel, this);
-					}
-				}
-				else {
-					history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
-					if ((int)history.size() > _analogHistoryLength) {
-						history.pop_back();
-					}
-				}
 				break;
+			}
+
+
 			}
 		}
 	}
@@ -567,6 +596,7 @@ void ofxFirmata::processSysExData(vector <unsigned char> data) {
 		if (pin <= _digital_pins.size())
 		{
 			_digital_pins[pin].mode = mode;
+			//printf("Pin State %2d is %s\n", pin, pinModeToString(mode).c_str());
 		}
 		while (it != data.end())
 		{
@@ -585,9 +615,11 @@ void ofxFirmata::processSysExData(vector <unsigned char> data) {
 	}
 }
 
-void ofxFirmata::processDigitalPort(int port, unsigned char value) {
+void ofxFirmata::updateDigitalPort(int port, unsigned char value) {
 	unsigned char mask;
 	int previous;
+
+	printf("%d %s\n", port, ofToBinary(value).c_str());
 
 	for (int i = port * 8; i < port * 8 + 8; ++i) {
 		previous = -1;
@@ -597,7 +629,8 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value) {
 
 		DigitalPin& pin = _digital_pins[i];
 
-		if (pin.mode == PinMode::DIGITAL_INPUT) {
+		if (pin.mode == PinMode::DIGITAL_INPUT) 
+		{
 			if (pin.history.size() > 0) {
 				previous = pin.history.front();
 			}
@@ -610,7 +643,8 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value) {
 			}
 
 			// trigger an event if the pin has changed value
-			if (pin.history.front() != previous) {
+			ReportStrategy s = _digital_pins[i].reportStrategy;
+			if (s == ReportStrategy::Always || (s == ReportStrategy::OnChange  && pin.history.front() != previous)) {
 				ofNotifyEvent(EDigitalPinChanged, i, this);
 			}
 		}
@@ -647,27 +681,6 @@ void ofxFirmata::sendDigitalPortReporting(int port, bool reporting) {
 		}
 	}
 #endif
-}
-
-void ofxFirmata::sendDigitalPinReporting(int pin, bool reporting) {
-	_digital_pins[pin].reporting = reporting;
-
-	int port = pin / 8;
-
-	if (reporting == true) {
-		sendDigitalPortReporting(port, true);
-	}
-	else {
-		bool send = true;
-		for (int i = port * 8; i < port * 8 + 8; ++i) {
-			if (_digital_pins[i].reporting) {
-				send = false;
-			}
-		}
-		if (send) {
-			sendDigitalPortReporting(port, false);
-		}
-	}
 }
 
 void ofxFirmata::sendByte(unsigned char byte) {
@@ -871,5 +884,30 @@ int ofxFirmata::getServo(int pin) const {
 	// for versions prior to 2.2
 	else {
 		return -1;
+	}
+}
+
+void ofxFirmata::_updateAnalogPin(int pinNum, int value)
+{
+	list <int>& history = _analog_pins[pinNum].history;
+	if (history.size() > 0) {
+		int previous = history.front();
+
+		history.push_front(value);
+		if ((int)history.size() > _analogHistoryLength) {
+			history.pop_back();
+		}
+
+		// trigger an event if the pin has changed value
+		ReportStrategy s = _analog_pins[pinNum].reportStrategy;
+		if (s == ReportStrategy::Always || (s == ReportStrategy::OnChange && history.front() != previous)) {
+			ofNotifyEvent(EAnalogPinChanged, pinNum, this);
+		}
+	}
+	else {
+		history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
+		if ((int)history.size() > _analogHistoryLength) {
+			history.pop_back();
+		}
 	}
 }

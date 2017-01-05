@@ -153,6 +153,13 @@ enum class DigitalValue
 class ofxFirmata {
 
 	public:
+		enum class ReportStrategy
+		{
+			None,
+			Always,
+			OnChange,
+		};
+
 		/// \name Constructor and Destructor
 		/// \{
 		ofxFirmata();
@@ -196,22 +203,23 @@ class ofxFirmata {
 		/// \name Setup
 		/// \{
 
+		void sendDigitalPinReporting(int pin, ReportStrategy reportStrategy);
 		/// \brief Setting a pins mode to ARD_INPUT turns on reporting for the port the pin is on
 		/// \param pin Pin on arduino (2-13)
 		/// \param mode `ARD_INPUT`, `ARD_OUTPUT`, `ARD_PWM`
 		/// \note Analog pins 0-5 can be used as digitial pins 16-21 but if the
 		/// mode of _one_ of these pins is set to `ARD_INPUT` then _all_ analog pin
 		/// reporting will be turned off
-		void sendDigitalPinMode(int pin, PinMode mode);
+		void sendDigitalPinMode(int pin, PinMode mode, bool force = false);
 
 		/// \brief Get the pin mode of the given pin
 		///
 		/// \returns `ARD_INPUT`, `ARD_OUTPUT`, `ARD_PWM`, `ARD_SERVO`, `ARD_ANALOG`
 		PinMode getDigitalPinMode(int pin) const;
 
-		void sendAnalogPinReporting(int pin, bool reporting);
+		void sendAnalogPinReporting(int pin, ReportStrategy reportStrategy, bool force = false);
 		/// \returns `ARD_ON` or `ARD_OFF`
-		bool getAnalogPinReporting(int pin) const;
+		ReportStrategy getAnalogPinReporting(int pin) const;
 
 		/// \brief Returns the analog in value that the pin is currently reading.
 		/// because the Arduino has a 10 bit ADC you get between 0 and 1023 for
@@ -389,13 +397,14 @@ class ofxFirmata {
 
 		/// \}
 
+
+
 	protected:
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
 
 		void sendProtocolVersionRequest();
 
 		void sendFirmwareVersionRequest();
-		void sendDigitalPinReporting(int pin, bool reporting);
 		// sets pin reporting to ARD_ON or ARD_OFF
 		// enables / disables reporting for the pins port
 
@@ -407,7 +416,8 @@ class ofxFirmata {
 		// port 2: pins 16-21 analog pins used as digital, all analog reporting will be turned off if this is set to ARD_ON
 
 		void processData(unsigned char inputData);
-		void processDigitalPort(int port, unsigned char value);
+		void updateDigitalPort(int port, unsigned char value);
+		void _updateAnalogPin(int pinNum, int value);
 		virtual void processSysExData(vector <unsigned char> data);
 
 		// the last set servo values
@@ -457,8 +467,7 @@ class ofxFirmata {
 		struct AnalogPin
 		{
 			int digitalPinNum = -1;
-			int value = -1;
-			bool reporting = false;
+			ReportStrategy reportStrategy = ReportStrategy::None;
 			list <int> history;
 		};
 
@@ -466,7 +475,7 @@ class ofxFirmata {
 		{
 			PinMode mode = PinMode::_NULL;
 			int value = -1;
-			bool reporting = false;
+			ReportStrategy reportStrategy = ReportStrategy::None;
 			list <int> history;
 		};
 
