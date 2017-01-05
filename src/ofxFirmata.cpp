@@ -1,4 +1,6 @@
 /*
+ * updated 2017 by chwan1@ultracombos.com
+ *
  * 1/9/13:
  *   - Fixed issue where digitalPinchange
  *
@@ -42,106 +44,72 @@
 #include "ofxFirmata.h"
 #include "ofUtils.h"
 
-// TODO thread it?
-// TODO throw event or exception if the serial port goes down...
-//---------------------------------------------------------------------------
-ofxFirmata::ofxFirmata(){
+ // TODO thread it?
+ // TODO throw event or exception if the serial port goes down...
+ //---------------------------------------------------------------------------
+ofxFirmata::ofxFirmata() {
 	_executeMultiByteCommand = 0x00; // 0x00 a pin mode (input), not a command in Firmata -> fail hard
-	for(unsigned char & e : _storedInputData){
+	for (unsigned char & e : _storedInputData) {
 		e = UCHAR_MAX;
-	}
-	for(int & e : _digitalPortValue){
-		e = INT_MAX;
-	}
-	for(auto & e : _digitalPortReporting){
-		e = false;
 	}
 }
 
-ofxFirmata::~ofxFirmata(){
+ofxFirmata::~ofxFirmata() {
 	_port.close();
 }
 
-// initialize pins once we get the Firmata version back from the Arduino board
-// the version is sent automatically by the Arduino board on startup
-void ofxFirmata::initPins() const {
-	if(_initialized){
-		return;                 // already initialized
-	}
-
-	_digital_pins.resize(_pin_capabilites.size());
-
-	// ports
-	int port_num = _pin_capabilites.size() / 8;
-	_digitalPortValue.resize(port_num);
-	_digitalPortReporting.resize(port_num);
-	for (int i = 0; i < port_num; ++i) {
-		_digitalPortValue[i] = 0;
-		_digitalPortReporting[i] = false;
-	}
-
-	// analog in pins
-	for each (auto& pin in _analog_pins)
-	{
-		_digital_pins[pin.digitalPinNum].mode = PinMode::ANALOG_INPUT;
-	}
-
-	_initialized = true;
-}
-
-bool ofxFirmata::connect(const std::string & device, int baud){
-	connectTime = ofGetElapsedTimef();
+bool ofxFirmata::connect(const std::string & device, int baud) {
+	_connectTime = ofGetElapsedTimef();
 	_initialized = false;
 	_port.listDevices();
-	connected = _port.setup(device.c_str(), baud);
-	return connected;
+	_connected = _port.setup(device.c_str(), baud);
+	return _connected;
 }
 
 // this method is not recommended
 // the preferred method is to listen for the EInitialized event in your application
 bool ofxFirmata::isArduinoReady() const {
-	if(bUseDelay){
-		if(_initialized || (ofGetElapsedTimef() - connectTime) > OF_ARDUINO_DELAY_LENGTH){
-			initPins();
-			connected = true;
+	if (_bUseDelay) {
+		if (_initialized || (ofGetElapsedTimef() - _connectTime) > OF_ARDUINO_DELAY_LENGTH) {
+			_connected = true;
 		}
 	}
-	return connected;
+	return _connected;
 }
 
-void ofxFirmata::setUseDelay(bool bDelay){
-	bUseDelay = bDelay;
+void ofxFirmata::setUseDelay(bool bDelay) {
+	_bUseDelay = bDelay;
 }
 
-void ofxFirmata::setDigitalHistoryLength(int length){
-	if(length >= 2){
+void ofxFirmata::setDigitalHistoryLength(int length) {
+	if (length >= 2) {
 		_digitalHistoryLength = length;
 	}
 }
 
-void ofxFirmata::setAnalogHistoryLength(int length){
-	if(length >= 2){
+void ofxFirmata::setAnalogHistoryLength(int length) {
+	if (length >= 2) {
 		_analogHistoryLength = length;
 	}
 }
 
-void ofxFirmata::setSysExHistoryLength(int length){
-	if(length >= 1){
+void ofxFirmata::setSysExHistoryLength(int length) {
+	if (length >= 1) {
 		_sysExHistoryLength = length;
 	}
 }
 
-void ofxFirmata::setStringHistoryLength(int length){
-	if(length >= 1){
+void ofxFirmata::setStringHistoryLength(int length) {
+	if (length >= 1) {
 		_stringHistoryLength = length;
 	}
 }
 
-void ofxFirmata::disconnect(){
+void ofxFirmata::disconnect() {
 	_port.close();
 }
 
-void ofxFirmata::update(){
+void ofxFirmata::update() {
 	static float last_init_time = ofGetElapsedTimef();
 	if (!_initialized && ofGetElapsedTimef() - last_init_time > 0.2)
 	{
@@ -150,19 +118,20 @@ void ofxFirmata::update(){
 	}
 	vector <unsigned char> bytesToProcess;
 	int bytesToRead = _port.available();
-	if(bytesToRead > 0){
+	if (bytesToRead > 0) {
 		bytesToProcess.resize(bytesToRead);
 		_port.readBytes(&bytesToProcess[0], bytesToRead);
-		for(int i = 0; i < bytesToRead; i++){
+		for (int i = 0; i < bytesToRead; i++) {
 			processData((char)(bytesToProcess[i]));
 		}
 	}
 }
 
 int ofxFirmata::getAnalog(int pin) const {
-	if(_analog_pins[pin].history.size() > 0){
+	if (_analog_pins[pin].history.size() > 0) {
 		return _analog_pins[pin].history.front();
-	}else{
+	}
+	else {
 		return -1;
 	}
 }
@@ -172,11 +141,13 @@ int ofxFirmata::getDigital(int pinNum) const {
 		return -1;
 	DigitalPin& pin = _digital_pins[pinNum];
 
-	if(pin.mode == PinMode::DIGITAL_INPUT && pin.history.size() > 0){
+	if (pin.mode == PinMode::DIGITAL_INPUT && pin.history.size() > 0) {
 		return pin.history.front();
-	}else if(pin.mode == PinMode::DIGITAL_OUTPUT){
+	}
+	else if (pin.mode == PinMode::DIGITAL_OUTPUT) {
 		return pin.value;
-	}else{
+	}
+	else {
 		return -1;
 	}
 }
@@ -185,9 +156,10 @@ int ofxFirmata::getPwm(int pinNum) const {
 	if (pinNum >= _digital_pins.size())
 		return -1;
 
-	if(_digital_pins[pinNum].mode == PinMode::PWM){
+	if (_digital_pins[pinNum].mode == PinMode::PWM) {
 		return _digital_pins[pinNum].value;
-	}else{
+	}
+	else {
 		return -1;
 	}
 }
@@ -225,11 +197,11 @@ void ofxFirmata::sendDigital(int pinNum, DigitalValue value, bool force /*= fals
 	int bit = pinNum - port * 8;
 
 	// set the bit
-	if (value ==  DigitalValue::HIGH) {
-		_digitalPortValue[port] |= (1 << bit);
+	if (value == DigitalValue::HIGH) {
+		_digital_ports[port].value |= (1 << bit);
 	}
 	else {
-		_digitalPortValue[port] &= ~(1 << bit);
+		_digital_ports[port].value &= ~(1 << bit);
 	}
 
 #if 0
@@ -259,49 +231,57 @@ void ofxFirmata::sendPwm(int pinNum, int value, bool force) {
 	sendExtendedAnalog(pinNum, value);
 }
 
-void ofxFirmata::sendSysEx(MessageType command, vector <unsigned char> data){
+void ofxFirmata::sendSysEx(MessageType command, vector <unsigned char> data) {
 	sendSysExBegin();
 	sendByte(command);
 	vector <unsigned char>::iterator it = data.begin();
-	while(it != data.end()){
+	while (it != data.end()) {
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
 	sendSysExEnd();
 }
 
-void ofxFirmata::sendSysExBegin(){
-	sendByte(MessageType::START_SYSEX);
-}
 
-void ofxFirmata::sendSysExEnd(){
+void ofxFirmata::sendSysEx(MessageType command)
+{
+	sendByte(MessageType::START_SYSEX);
+	sendByte(command);
 	sendByte(MessageType::END_SYSEX);
 }
 
-void ofxFirmata::sendString(string str){
+void ofxFirmata::sendSysExBegin() {
+	sendByte(MessageType::START_SYSEX);
+}
+
+void ofxFirmata::sendSysExEnd() {
+	sendByte(MessageType::END_SYSEX);
+}
+
+void ofxFirmata::sendString(string str) {
 	sendByte(MessageType::START_SYSEX);
 	sendByte(MessageType::STRING_DATA);
 	string::iterator it = str.begin();
-	while(it != str.end()){
+	while (it != str.end()) {
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
 	sendByte(MessageType::END_SYSEX);
 }
 
-void ofxFirmata::sendProtocolVersionRequest(){
+void ofxFirmata::sendProtocolVersionRequest() {
 	sendByte(MessageType::PROTOCOL_VERSION);
 }
 
-void ofxFirmata::sendFirmwareVersionRequest(){
+void ofxFirmata::sendFirmwareVersionRequest() {
 	sendSysEx(MessageType::REPORT_FIRMWARE);
 }
 
-void ofxFirmata::sendReset(){
+void ofxFirmata::sendReset() {
 	sendByte(MessageType::SYSTEM_RESET);
 }
 
-void ofxFirmata::sendAnalogPinReporting(int pinNum, bool reporting){
+void ofxFirmata::sendAnalogPinReporting(int pinNum, bool reporting) {
 	if (pinNum >= _analog_pins.size())
 		return;
 
@@ -309,7 +289,7 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, bool reporting){
 	DigitalPin& pin = _digital_pins[d_pin];
 
 	// if this analog pin is set as a digital input, disable digital pin reporting
-	if(pin.reporting == true){
+	if (pin.reporting == true) {
 		sendDigitalPinReporting(d_pin, false);
 	}
 
@@ -321,16 +301,17 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, bool reporting){
 	_analog_pins[pinNum].reporting = reporting;
 }
 
-void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode){
+void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode) {
 	sendByte(MessageType::SET_PIN_MODE);
 	sendByte(pin);
 	sendByte((int)mode);
 	_digital_pins[pin].mode = mode;
 
 	// turn on or off reporting on the port
-	if(mode == PinMode::DIGITAL_INPUT){
+	if (mode == PinMode::DIGITAL_INPUT) {
 		sendDigitalPinReporting(pin, true);
-	}else{
+	}
+	else {
 		sendDigitalPinReporting(pin, false);
 	}
 }
@@ -344,19 +325,19 @@ bool ofxFirmata::getAnalogPinReporting(int pin) const {
 	return _analog_pins[pin].reporting;
 }
 
-list <int> * ofxFirmata::getAnalogHistory(int pin){
+list <int> * ofxFirmata::getAnalogHistory(int pin) {
 	return &_analog_pins[pin].history;
 }
 
-list <int> * ofxFirmata::getDigitalHistory(int pin){
+list <int> * ofxFirmata::getDigitalHistory(int pin) {
 	return &_digital_pins[pin].history;
 }
 
-list <vector <unsigned char> > * ofxFirmata::getSysExHistory(){
+list <vector <unsigned char> > * ofxFirmata::getSysExHistory() {
 	return &_sysExHistory;
 }
 
-list <string> * ofxFirmata::getStringHistory(){
+list <string> * ofxFirmata::getStringHistory() {
 	return &_stringHistory;
 }
 
@@ -386,82 +367,83 @@ bool ofxFirmata::isInitialized() const {
 
 // ------------------------------ private functions
 
-void ofxFirmata::processData(unsigned char inputData){
+void ofxFirmata::processData(unsigned char inputData) {
 
 	char msg[100];
 	sprintf(msg, "Received Byte: %i", inputData);
 	//Logger::get("Application").information(msg);
 
 	// we have command data
-	if(_waitForData > 0 && inputData < 128){
+	if (_waitForData > 0 && inputData < 128) {
 		_waitForData--;
 
 		// collect the data
 		_storedInputData[_waitForData] = inputData;
 
 		// we have all data executeMultiByteCommand
-		if(_waitForData == 0){
-			switch(_executeMultiByteCommand){
-			 case MessageType::DIGITAL_IO_MESSAGE:
-				 processDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
-				 break;
+		if (_waitForData == 0) {
+			switch (_executeMultiByteCommand) {
+			case MessageType::DIGITAL_IO_MESSAGE:
+				processDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
+				break;
 
-			 case MessageType::PROTOCOL_VERSION:    // report version
-				 _majorProtocolVersion = _storedInputData[1];
-				 _minorProtocolVersion = _storedInputData[0];
-				 ofNotifyEvent(EProtocolVersionReceived, _majorProtocolVersion, this);
-				 break;
+			case MessageType::PROTOCOL_VERSION:    // report version
+				_majorProtocolVersion = _storedInputData[1];
+				_minorProtocolVersion = _storedInputData[0];
+				ofNotifyEvent(EProtocolVersionReceived, _majorProtocolVersion, this);
+				break;
 
-			 case MessageType::ANALOG_IO_MESSAGE:
-				 if (_multiByteChannel >= _analog_pins.size())
-					 break;
-				 list <int>& history = _analog_pins[_multiByteChannel].history;
-				 if(history.size() > 0){
-					 int previous = history.front();
+			case MessageType::ANALOG_IO_MESSAGE:
+				if (_multiByteChannel >= _analog_pins.size())
+					break;
+				list <int>& history = _analog_pins[_multiByteChannel].history;
+				if (history.size() > 0) {
+					int previous = history.front();
 
-					 history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
-					 if((int)history.size() > _analogHistoryLength){
-						 history.pop_back();
-					 }
+					history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
+					if ((int)history.size() > _analogHistoryLength) {
+						history.pop_back();
+					}
 
-					 // trigger an event if the pin has changed value
-					 if(history.front() != previous){
-						 ofNotifyEvent(EAnalogPinChanged, _multiByteChannel, this);
-					 }
-				 }else{
-					 history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
-					 if((int)history.size() > _analogHistoryLength){
-						 history.pop_back();
-					 }
-				 }
-				 break;
+					// trigger an event if the pin has changed value
+					if (history.front() != previous) {
+						ofNotifyEvent(EAnalogPinChanged, _multiByteChannel, this);
+					}
+				}
+				else {
+					history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
+					if ((int)history.size() > _analogHistoryLength) {
+						history.pop_back();
+					}
+				}
+				break;
 			}
-
 		}
 	}
 	// we have SysEx command data
-	else if(_waitForData < 0){
+	else if (_waitForData < 0) {
 
 		// we have all sysex data
-		if(inputData == (int)MessageType::END_SYSEX){
+		if (inputData == (int)MessageType::END_SYSEX) {
 			_waitForData = 0;
 			processSysExData(_sysExData);
 			_sysExData.clear();
 		}
 		// still have data, collect it
-		else{
+		else {
 			_sysExData.push_back((unsigned char)inputData);
 		}
 	}
 	// we have a command
-	else{
+	else {
 		int command;
 
 		// extract the command and channel info from a byte if it is less than 0xF0
-		if(inputData < 0xF0){
+		if (inputData < 0xF0) {
 			command = inputData & 0xF0;
 			_multiByteChannel = inputData & 0x0F;
-		}else{
+		}
+		else {
 			// commands in the 0xF* range don't use channel data
 			command = inputData;
 		}
@@ -484,7 +466,7 @@ void ofxFirmata::processData(unsigned char inputData){
 }
 
 // sysex data is assumed to be 8-bit bytes split into two 7-bit bytes.
-void ofxFirmata::processSysExData(vector <unsigned char> data){
+void ofxFirmata::processSysExData(vector <unsigned char> data) {
 	vector <unsigned char>::iterator it = data.begin();
 
 	auto next_char = [&]()
@@ -517,7 +499,7 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 		_firmwareVersionSum = _majorFirmwareVersion * 10 + _minorFirmwareVersion;
 		ofNotifyEvent(EFirmwareVersionReceived, _majorFirmwareVersion, this);
 	}
-		break;
+	break;
 
 	case MessageType::STRING_DATA:
 	{
@@ -537,7 +519,7 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 
 		ofNotifyEvent(EStringReceived, str, this);
 	}
-		break;
+	break;
 	case MessageType::CAPABILITY_RESPONSE:
 	{
 		_pin_capabilites.clear();
@@ -557,15 +539,6 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 			}
 		}
 		_pin_capabilites.pop_back();
-		for (int i = 0; i < _pin_capabilites.size(); i++)
-		{
-			cout << "pin capability " << i << " :";
-			for each (auto& pair in _pin_capabilites[i])
-			{
-				cout << PinModeToString(pair.first) << "[" << pair.second << "] ";
-			}
-			cout << endl;
-		}
 	}
 	break;
 	case MessageType::ANALOG_MAPPING_RESPONSE:
@@ -580,9 +553,8 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 			}
 			else
 			{
-				_analog_pins.resize(c+1);
+				_analog_pins.resize(c + 1);
 				_analog_pins[c].digitalPinNum = idx;
-				printf("analog pin %d: %d\n", c, idx);
 			}
 			idx++;
 		}
@@ -592,11 +564,15 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 	{
 		int pin = next_char();
 		PinMode mode = (PinMode)next_char();
+		if (pin <= _digital_pins.size())
+		{
+			_digital_pins[pin].mode = mode;
+		}
 		while (it != data.end())
 		{
 			next_char();
 		}
-		printf("pin state %d: %s\n", pin, PinModeToString(mode).c_str());
+
 	}
 	break;
 	default:    // the message isn't in Firmatas extended command set
@@ -609,14 +585,14 @@ void ofxFirmata::processSysExData(vector <unsigned char> data){
 	}
 }
 
-void ofxFirmata::processDigitalPort(int port, unsigned char value){
+void ofxFirmata::processDigitalPort(int port, unsigned char value) {
 	unsigned char mask;
 	int previous;
 
 	for (int i = port * 8; i < port * 8 + 8; ++i) {
 		previous = -1;
 
-		if(i >= _digital_pins.size())
+		if (i >= _digital_pins.size())
 			continue;
 
 		DigitalPin& pin = _digital_pins[i];
@@ -641,11 +617,12 @@ void ofxFirmata::processDigitalPort(int port, unsigned char value){
 	}
 }
 
-void ofxFirmata::sendDigitalPortReporting(int port, bool reporting){
+void ofxFirmata::sendDigitalPortReporting(int port, bool reporting) {
 	sendByte((int)MessageType::REPORT_DIGITAL_PORT + port);
 	sendByte(reporting);
-	_digitalPortReporting[port] = reporting;
+	_digital_ports[port].reporting = reporting;
 
+	//TODO check necessity of these code
 #if 0
 	int offset;
 
@@ -657,27 +634,27 @@ void ofxFirmata::sendDigitalPortReporting(int port, bool reporting){
 	}
 
 	// for Firmata 2.3 and higher:
-	if(port == 1 && mode == ARD_ON){
-		for(int i = 0; i < 2; i++){
+	if (port == 1 && mode == ARD_ON) {
+		for (int i = 0; i < 2; i++) {
 			_analogPinReporting[i] = ARD_OFF;
 		}
 	}
 
 	// for Firmata 2.3 and all prior Firmata protocol versions:
-	if(port == 2 && mode == ARD_ON){ // if reporting is turned on on port 2 then ofArduino on the Arduino disables all analog reporting
-		for(int i = offset; i < ARD_TOTAL_ANALOG_PINS; i++){
+	if (port == 2 && mode == ARD_ON) { // if reporting is turned on on port 2 then ofArduino on the Arduino disables all analog reporting
+		for (int i = offset; i < ARD_TOTAL_ANALOG_PINS; i++) {
 			_analogPinReporting[i] = ARD_OFF;
 		}
 	}
 #endif
 }
 
-void ofxFirmata::sendDigitalPinReporting(int pin, bool reporting){
+void ofxFirmata::sendDigitalPinReporting(int pin, bool reporting) {
 	_digital_pins[pin].reporting = reporting;
 
 	int port = pin / 8;
 
-	if(reporting == true){
+	if (reporting == true) {
 		sendDigitalPortReporting(port, true);
 	}
 	else {
@@ -693,29 +670,179 @@ void ofxFirmata::sendDigitalPinReporting(int pin, bool reporting){
 	}
 }
 
-void ofxFirmata::sendByte(unsigned char byte){
+void ofxFirmata::sendByte(unsigned char byte) {
 	//char msg[100];
 	//sprintf(msg, "Sending Byte: %i", byte);
 	//Logger::get("Application").information(msg);
 	_port.writeByte(byte);
 }
 
+
+void ofxFirmata::sendByte(MessageType msg)
+{
+	sendByte((int)msg);
+}
+
+void ofxFirmata::sendCapabilityQuery()
+{
+	sendSysEx(MessageType::CAPABILITY_QUERY);
+}
+
+void ofxFirmata::sendAnalogMappingQuery()
+{
+	sendSysEx(MessageType::ANALOG_MAPPING_QUERY);
+}
+
+void ofxFirmata::sendExtendedAnalog(int pin, int value)
+{
+	sendSysExBegin();
+	sendByte(MessageType::EXTENDED_ANALOG);
+	sendByte(pin);
+	sendValueAsTwo7bitBytes(value);
+	sendSysExEnd();
+}
+
+void ofxFirmata::sendPinStateQuery(int pin)
+{
+	sendSysExBegin();
+	sendByte(MessageType::PIN_STATE_QUERY);
+	sendByte(pin);
+	sendSysExEnd();
+}
+
+void ofxFirmata::tryInit()
+{
+	if (_minorFirmwareVersion == 0 && _majorFirmwareVersion == 0)
+		sendFirmwareVersionRequest();
+
+	if (_pin_capabilites.size() == 0)
+		sendCapabilityQuery();
+
+	if (_analog_pins.size() == 0)
+		sendAnalogMappingQuery();
+
+	if (_minorFirmwareVersion != 0 &&
+		_majorFirmwareVersion != 0 &&
+		_pin_capabilites.size() != 0 &&
+		_analog_pins.size() != 0)
+	{
+		if (_digital_pins.size() != _pin_capabilites.size())
+		{
+			_digital_pins.resize(_pin_capabilites.size());
+			// ports
+			int port_count = _pin_capabilites.size() / 8 + 1;
+			_digital_ports.resize(port_count);
+		}
+		bool init_finished = true;
+		for (int i = 0; i < _pin_capabilites.size(); i++)
+		{
+			if (_digital_pins[i].mode == PinMode::_NULL)
+			{
+				init_finished = false;
+				sendPinStateQuery(i);
+			}
+		}
+		if (init_finished == true)
+		{
+			printf("===================== Firmata Initialized =====================\n");
+			//report states
+			{
+				// print firmware name and version to the console
+				cout << getFirmwareName() << endl;
+				cout << "firmata v" << getMajorFirmwareVersion() << "." << getMinorFirmwareVersion() << endl;
+
+				printf("Pin Capability:\n");
+				for (int i = 0; i < _pin_capabilites.size(); i++)
+				{
+					printf("\tpin %2d: ", i);
+					for each (auto& pair in _pin_capabilites[i])
+					{
+						cout << pinModeToString(pair.first) << "[" << pair.second << "] ";
+					}
+					cout << endl;
+				}
+				printf("\nAnalog Mapping:\n");
+				for (int i = 0; i < _analog_pins.size(); i++)
+				{
+					printf("\ta[%2d] = d[%2d]\n", i, _analog_pins[i].digitalPinNum);
+				}
+				printf("\nPin State:\n");
+				for (size_t i = 0; i < _digital_pins.size(); i++)
+				{
+					PinMode mode = _digital_pins[i].mode;
+					printf("\tpin %2d: %s\n", i, pinModeToString(mode).c_str());
+				}
+				printf("===============================================================\n\n\n");
+			}
+
+			_initialized = true;
+			ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
+		}
+	}
+}
+
+std::string ofxFirmata::pinModeToString(PinMode mode)
+{
+	switch (mode)
+	{
+	case PinMode::DIGITAL_INPUT:
+		return "DIGITAL_INPUT";
+		break;
+	case PinMode::DIGITAL_OUTPUT:
+		return "DIGITAL_OUTPUT";
+		break;
+	case PinMode::ANALOG_INPUT:
+		return "ANALOG_INPUT";
+		break;
+	case PinMode::PWM:
+		return "PWM";
+		break;
+	case PinMode::SERVO:
+		return "SERVO";
+		break;
+	case PinMode::SHIFT:
+		return "SHIFT";
+		break;
+	case PinMode::I2C:
+		return "I2C";
+		break;
+	case PinMode::ONEWIRE:
+		return "ONEWIRE";
+		break;
+	case PinMode::STEPPER:
+		return "STEPPER";
+		break;
+	case PinMode::ENCODER:
+		return "ENCODER";
+		break;
+	case PinMode::SERIAL:
+		return "SERIAL";
+		break;
+	case PinMode::INPUT_PULLUP:
+		return "INPUT_PULLUP";
+		break;
+	default:
+		return "_NULL";
+		break;
+	}
+}
+
 // in Firmata (and MIDI) data bytes are 7-bits. The 8th bit serves as a flag to mark a byte as either command or data.
 // therefore you need two data bytes to send 8-bits (a char).
-void ofxFirmata::sendValueAsTwo7bitBytes(int value){
+void ofxFirmata::sendValueAsTwo7bitBytes(int value) {
 	sendByte(value & 127); // LSB
 	sendByte(value >> 7 & 127); // MSB
 }
 
 // SysEx data is sent as 8-bit bytes split into two 7-bit bytes, this function merges two 7-bit bytes back into one 8-bit byte.
-int ofxFirmata::getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb){
+int ofxFirmata::getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb) {
 	return (msb << 7) | lsb;
 }
 
-void ofxFirmata::sendServo(int pin, int value, bool force){
+void ofxFirmata::sendServo(int pin, int value, bool force) {
 	// for firmata v2.2 and greater
-	if(_firmwareVersionSum >= FIRMWARE2_2){
-		if(_digital_pins[pin].mode == PinMode::SERVO && (_digital_pins[pin].value != value || force)){
+	if (_firmwareVersionSum >= FIRMWARE2_2) {
+		if (_digital_pins[pin].mode == PinMode::SERVO && (_digital_pins[pin].value != value || force)) {
 			sendExtendedAnalog(pin, value);
 			_digital_pins[pin].value = value;
 		}

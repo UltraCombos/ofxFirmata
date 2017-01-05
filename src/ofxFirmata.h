@@ -1,4 +1,6 @@
 /*
+ * updated 2017 by chwan1@ultracombos.com 
+ *
  * Copyright 2007-2008 (c) Erik Sjodin, eriksjodin.net
  *
  * Permission is hereby granted, free of charge, to any person
@@ -124,16 +126,10 @@ enum class DigitalValue
 	HIGH = 1
 };
 
-// ---- arduino constants (for Arduino NG and Diecimila)
-
-// board settings
-#define ARD_TOTAL_PORTS         3 // total number of ports for the board
-
 #define OF_ARDUINO_DELAY_LENGTH 4.0
 
 #define FIRMWARE2_2             22
 #define FIRMWARE2_3             23
-
 
 /// \brief This is a way to control an Arduino that has had the firmata library
 /// loaded onto it, from OF.
@@ -179,6 +175,12 @@ class ofxFirmata {
 
 		bool isArduinoReady() const;
 
+		// pin: 0-5
+		// mode: ARD_ON or ARD_OFF
+		// Note: analog pins 0-5 can be used as digitial pins 16-21 but if reporting for _one_ analog pin is enabled then reporting for _all_ of digital pin 16-21 will be turned off
+
+		void setUseDelay(bool bDelay);
+
 		/// \brief Closes the serial port connection.
 		/// Does not turn the Arduino off.
 		void disconnect();
@@ -202,23 +204,43 @@ class ofxFirmata {
 		/// reporting will be turned off
 		void sendDigitalPinMode(int pin, PinMode mode);
 
+		/// \brief Get the pin mode of the given pin
+		///
+		/// \returns `ARD_INPUT`, `ARD_OUTPUT`, `ARD_PWM`, `ARD_SERVO`, `ARD_ANALOG`
+		PinMode getDigitalPinMode(int pin) const;
+
 		void sendAnalogPinReporting(int pin, bool reporting);
-		// pin: 0-5
-		// mode: ARD_ON or ARD_OFF
-		// Note: analog pins 0-5 can be used as digitial pins 16-21 but if reporting for _one_ analog pin is enabled then reporting for _all_ of digital pin 16-21 will be turned off
+		/// \returns `ARD_ON` or `ARD_OFF`
+		bool getAnalogPinReporting(int pin) const;
 
-		void setUseDelay(bool bDelay);
-
-		void setDigitalHistoryLength(int length);
-		void setAnalogHistoryLength(int length);
-		void setStringHistoryLength(int length);
-		void setSysExHistoryLength(int nSysEx);
+		/// \brief Returns the analog in value that the pin is currently reading.
+		/// because the Arduino has a 10 bit ADC you get between 0 and 1023 for
+		/// possible values.
+		///
+		/// \param pin The pin number (0-5)
+		int getAnalog(int pin) const;
 
 		/// \}
 		/// \name Senders
 		/// \{
 
 		void sendDigital(int pin, DigitalValue value, bool force = false);
+		/// \brief Returns the last received value (if the pin mode is ARD_INPUT)
+		/// or the last set value (if the pin mode is ARD_OUTPUT) for the given
+		/// pin
+		///
+		/// Returns whether the pin is reading high or low, 1 or 0. You can test
+		/// against this with an if() statement which is handy:
+		/// ~~~~{.cpp}
+		///     if(arduino.getDigital(pin)){
+		///         // do something on high
+		///     } else {
+		///         // do something on low
+		///     }
+		/// ~~~~
+		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as digital pins
+		int getDigital(int pin) const;
+
 		// pin: 2-13
 		// value: ARD_LOW or ARD_HIGH
 		// the pins mode has to be set to ARD_OUTPUT or ARD_INPUT (in the latter mode pull-up resistors are enabled/disabled)
@@ -226,31 +248,42 @@ class ofxFirmata {
 
 		void sendPwm(int pin, int value, bool force = false);
 
+		/// \brief Returns the last set PWM value (0-255) for the given pin
+		///
+		/// The pins mode has to be ARD_PWM
+		///
+		/// On the Arduino Uno the following pins are supported: 3, 5, 6, 9, 10 and 11
+		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as digital pins
+		int getPwm(int pin) const;
+
+		/// \brief Send a value to a servo.
+		///
+		/// A servo has to be atached to the pin prior
+		/// \param pin 9 or 10
+		/// \param value The value to send
+		void sendServo(int pin, int value, bool force = false);
+
+		/// \param angle parameter DEPRECATED as of Firmata 2.2
+		void sendServoConfig(int pin, int minPulse = 544, int maxPulse = 2400);
+
+		/// \returns the last set servo value for a pin if the pin has a servo attached.
+		int getServo(int pin) const;
+
 		void sendSysEx(MessageType command, vector <unsigned char> data);
-		void sendSysEx(MessageType command)
-		{
-			sendByte(MessageType::START_SYSEX);
-			sendByte(command);
-			sendByte(MessageType::END_SYSEX);
-		}
-
-		/// \brief Send a string to the Arduino
-		/// \note Firmata can not handle strings longer than 12 characters.
-		void sendString(string str);
-
-		void sendProtocolVersionRequest();
-
-protected:
-		void sendFirmwareVersionRequest();
-public:
-		/// \brief This will cause your Arduino to reset and boot into the program again.
-		void sendReset();
+		void sendSysEx(MessageType command);
 
 		/// \brief Sends the `FIRMATA_START_SYSEX` command
 		void sendSysExBegin();
 
 		/// \brief Sends the `FIRMATA_END_SYSEX` command
 		void sendSysExEnd();
+
+		/// \brief Send a string to the Arduino
+		/// \note Firmata can not handle strings longer than 12 characters.
+		void sendString(string str);
+
+		/// \brief This will cause your Arduino to reset and boot into the program again.
+		void sendReset();
 
 		/// \brief Sends a byte without wrapping it in a firmata message.
 		///
@@ -271,36 +304,8 @@ public:
 		/// \name Getters
 		/// \{
 
-		/// \brief Returns the last set PWM value (0-255) for the given pin
-		///
-		/// The pins mode has to be ARD_PWM
-		///
-		/// On the Arduino Uno the following pins are supported: 3, 5, 6, 9, 10 and 11
-		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as digital pins
-		int getPwm(int pin) const;
-
-		/// \brief Returns the last received value (if the pin mode is ARD_INPUT)
-		/// or the last set value (if the pin mode is ARD_OUTPUT) for the given
-		/// pin
-		///
-		/// Returns whether the pin is reading high or low, 1 or 0. You can test
-		/// against this with an if() statement which is handy:
-		/// ~~~~{.cpp}
-		///     if(arduino.getDigital(pin)){
-		///         // do something on high
-		///     } else {
-		///         // do something on low
-		///     }
-		/// ~~~~
-		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as digital pins
-		int getDigital(int pin) const;
-
-		/// \brief Returns the analog in value that the pin is currently reading.
-		/// because the Arduino has a 10 bit ADC you get between 0 and 1023 for
-		/// possible values.
-		///
-		/// \param pin The pin number (0-5)
-		int getAnalog(int pin) const;
+		/// \brief Useful for parsing SysEx messages
+		int getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb);
 
 		/// \returns the last received SysEx message.
 		vector <unsigned char> getSysEx() const;
@@ -323,6 +328,7 @@ public:
 		/// \returns the name of the firmware.
 		string getFirmwareName() const;
 
+		void setDigitalHistoryLength(int length);
 		/// \brief Returns a pointer to the digital data history list for the
 		/// given pin
 		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as
@@ -330,26 +336,19 @@ public:
 		/// \param pin The pin number (2-13)
 		list <int> * getDigitalHistory(int pin);
 
+		void setAnalogHistoryLength(int length);
 		/// \brief Returns a pointer to the analog data history list for the given pin.
 		/// \param pin The Arduino Uno pin: 0-5
 		list <int> * getAnalogHistory(int pin);
 
-		/// \returns a pointer to the SysEx history.
-		list <vector <unsigned char> > * getSysExHistory();
-
+		void setStringHistoryLength(int length);
 		/// \returns a pointer to the string history.
 		list <string> * getStringHistory();
 
-		/// \brief Get the pin mode of the given pin
-		///
-		/// \returns `ARD_INPUT`, `ARD_OUTPUT`, `ARD_PWM`, `ARD_SERVO`, `ARD_ANALOG`
-		PinMode getDigitalPinMode(int pin) const;
+		void setSysExHistoryLength(int nSysEx);
 
-		/// \returns `ARD_ON` or `ARD_OFF`
-		bool getAnalogPinReporting(int pin) const;
-
-		/// \brief Useful for parsing SysEx messages
-		int getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb);
+		/// \returns a pointer to the SysEx history.
+		list <vector <unsigned char> > * getSysExHistory();
 
 		/// \}
 		/// \name Events
@@ -388,26 +387,14 @@ public:
 		/// \name Servos
 		/// \{
 
-		/// \brief Send a value to a servo.
-		///
-		/// A servo has to be atached to the pin prior
-		/// \param pin 9 or 10
-		/// \param value The value to send
-		void sendServo(int pin, int value, bool force = false);
-
-		/// \param angle parameter DEPRECATED as of Firmata 2.2
-		void sendServoConfig(int pin, int minPulse = 544, int maxPulse = 2400);
-
-		/// \returns the last set servo value for a pin if the pin has a servo attached.
-		int getServo(int pin) const;
-
 		/// \}
 
 	protected:
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
 
-		void initPins() const;
+		void sendProtocolVersionRequest();
 
+		void sendFirmwareVersionRequest();
 		void sendDigitalPinReporting(int pin, bool reporting);
 		// sets pin reporting to ARD_ON or ARD_OFF
 		// enables / disables reporting for the pins port
@@ -423,8 +410,16 @@ public:
 		void processDigitalPort(int port, unsigned char value);
 		virtual void processSysExData(vector <unsigned char> data);
 
+		// the last set servo values
+		void sendByte(MessageType msg);
+		void sendCapabilityQuery();
+		void sendAnalogMappingQuery();
+		void sendExtendedAnalog(int pin, int value);
+		void sendPinStateQuery(int pin);
+
+		void tryInit();
+		string pinModeToString(PinMode mode);
 		ofSerial _port;
-		int _portStatus = -1;
 
 		// --- history variables
 		int _analogHistoryLength = 2;
@@ -475,118 +470,22 @@ public:
 			list <int> history;
 		};
 
+		struct DigitalPort
+		{
+			int value = 0;
+			bool reporting = false;
+		};
+
 		vector<AnalogPin> _analog_pins;
 		mutable vector<DigitalPin> _digital_pins;
-		
-		mutable vector<int> _digitalPortValue;
-		// the last set values on all ports
+		vector<DigitalPort> _digital_ports;
 
-		mutable vector<bool> _digitalPortReporting;
-		// whether pin reporting is enabled / disabled
+		bool _bUseDelay = true;
 
-		bool bUseDelay = true;
+		mutable bool _connected = false; ///< \brief This yields true if a serial connection to Arduino exists.
 
-		mutable bool connected = false; ///< \brief This yields true if a serial connection to Arduino exists.
+		float _connectTime = 0.0f; ///< \brief This represents the (running) time of establishing a serial connection.
 
-		float connectTime = 0.0f; ///< \brief This represents the (running) time of establishing a serial connection.
-
-		// the last set servo values
-		void sendByte(MessageType msg)
-		{
-			sendByte((int)msg);
-		}
-		void sendCapabilityQuery()
-		{
-			sendSysEx(MessageType::CAPABILITY_QUERY);
-		}
-		void sendAnalogMappingQuery()
-		{
-			sendSysEx(MessageType::ANALOG_MAPPING_QUERY);
-		}
-		void sendExtendedAnalog(int pin, int value)
-		{
-			sendSysExBegin();
-			sendByte(MessageType::EXTENDED_ANALOG);
-			sendByte(pin);
-			sendValueAsTwo7bitBytes(value);
-			sendSysExEnd();
-		}
-		void sendPinStateQuery(int pin)
-		{
-			sendSysExBegin();
-			sendByte(MessageType::PIN_STATE_QUERY);
-			sendByte(pin);
-			sendSysExEnd();
-		}
-		void tryInit()
-		{
-			if(_minorFirmwareVersion == 0 && _majorFirmwareVersion == 0)
-				sendFirmwareVersionRequest();
-
-			if(_pin_capabilites.size() == 0)
-				sendCapabilityQuery();
-
-			if(_analog_pins.size() == 0)
-				sendAnalogMappingQuery();
-
-			if (_minorFirmwareVersion != 0 && 
-				_majorFirmwareVersion != 0 && 
-				_pin_capabilites.size() != 0 && 
-				_analog_pins.size() != 0)
-			{
-				for (int i = 0; i < _pin_capabilites.size(); i++)
-				{
-					sendPinStateQuery(i);
-				}
-				initPins();
-				ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
-			}
-		}
-		string PinModeToString(PinMode mode)
-		{
-			switch (mode)
-			{
-			case PinMode::DIGITAL_INPUT:
-				return "DIGITAL_INPUT";
-				break;
-			case PinMode::DIGITAL_OUTPUT:
-				return "DIGITAL_OUTPUT";
-				break;
-			case PinMode::ANALOG_INPUT:
-				return "ANALOG_INPUT";
-				break;
-			case PinMode::PWM:
-				return "PWM";
-				break;
-			case PinMode::SERVO:
-				return "SERVO";
-				break;
-			case PinMode::SHIFT:
-				return "SHIFT";
-				break;
-			case PinMode::I2C:
-				return "I2C";
-				break;
-			case PinMode::ONEWIRE:
-				return "ONEWIRE";
-				break;
-			case PinMode::STEPPER:
-				return "STEPPER";
-				break;
-			case PinMode::ENCODER:
-				return "ENCODER";
-				break;
-			case PinMode::SERIAL:
-				return "SERIAL";
-				break;
-			case PinMode::INPUT_PULLUP:
-				return "INPUT_PULLUP";
-				break;
-			default:
-				return "_NULL";
-				break;
-			}
-		}
 };
 
 //typedef ofArduino ofStandardFirmata;
