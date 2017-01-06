@@ -47,12 +47,7 @@
  // TODO thread it?
  // TODO throw event or exception if the serial port goes down...
  //---------------------------------------------------------------------------
-ofxFirmata::ofxFirmata() {
-	_executeMultiByteCommand = 0x00; // 0x00 a pin mode (input), not a command in Firmata -> fail hard
-	for (unsigned char & e : _storedInputData) {
-		e = UCHAR_MAX;
-	}
-}
+ofxFirmata::ofxFirmata() {}
 
 ofxFirmata::~ofxFirmata() {
 	_port.close();
@@ -122,7 +117,27 @@ void ofxFirmata::update() {
 		bytesToProcess.resize(bytesToRead);
 		_port.readBytes(&bytesToProcess[0], bytesToRead);
 		for (int i = 0; i < bytesToRead; i++) {
-			processData((char)(bytesToProcess[i]));
+			_processSerialData((char)(bytesToProcess[i]));
+		}
+	}
+	for (int i = 0; i < _analog_pins.size(); i++)
+	{
+		list <int>& history = _analog_pins[i].history;
+		if (history.size() == 0)
+			continue;
+
+		if (_analog_pins[i].reportStrategy == ReportStrategy::Always) {
+			ofNotifyEvent(EAnalogPinChanged, i, this);
+		}
+	}
+	for (int i = 0; i < _digital_pins.size(); i++)
+	{
+		list <int>& history = _digital_pins[i].history;
+		if (history.size() == 0)
+			continue;
+
+		if (_digital_pins[i].reportStrategy == ReportStrategy::Always) {
+			ofNotifyEvent(EDigitalPinChanged, i, this);
 		}
 	}
 }
@@ -139,7 +154,7 @@ int ofxFirmata::getAnalog(int pin) const {
 int ofxFirmata::getDigital(int pinNum) const {
 	if (pinNum >= _digital_pins.size())
 		return -1;
-	DigitalPin& pin = _digital_pins[pinNum];
+	DigitalPin pin = _digital_pins[pinNum];
 
 	if (pin.mode == PinMode::DIGITAL_INPUT && pin.history.size() > 0) {
 		return pin.history.front();
@@ -282,7 +297,7 @@ void ofxFirmata::sendReset() {
 }
 
 void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrategy, bool force /*=false*/) {
-	if (pinNum >= _analog_pins.size())
+	if (pinNum >= _analog_pins.size() || _initialized == false)
 		return;
 
 	if (_analog_pins[pinNum].reportStrategy == reportStrategy && !force)
@@ -308,13 +323,13 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrateg
 }
 
 void ofxFirmata::sendDigitalPinReporting(int pin, ReportStrategy reportStrategy) {
+	ofLogWarning("ofxFirmata") << "sendDigitalPinReporting() is not working correctly" << endl;
 	_digital_pins[pin].reportStrategy = reportStrategy;
 
 	sendDigitalPinMode(pin, PinMode::DIGITAL_INPUT);
 
 	int port = pin / 8;
 
-	//sendDigitalPinMode(pin, PinMode::DIGITAL_INPUT);
 	//sendPinStateQuery(pin);
 
 	if (reportStrategy != ReportStrategy::None) {
@@ -340,6 +355,9 @@ void ofxFirmata::sendDigitalPinReporting(int pin, ReportStrategy reportStrategy)
 }
 
 void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode, bool force /*=false*/) {
+	if (pin >= _digital_pins.size())
+		return;
+
 	if (_digital_pins[pin].mode == mode && !force)
 		return;
 
@@ -408,94 +426,104 @@ bool ofxFirmata::isInitialized() const {
 
 // ------------------------------ private functions
 
-void ofxFirmata::processData(unsigned char inputData) {
-
+void ofxFirmata::_processSerialData(unsigned char inputData) {
 	char msg[100];
 	sprintf(msg, "Received Byte: %i", inputData);
 	//Logger::get("Application").information(msg);
 
-	// we have command data
-	if (_waitForData > 0 && inputData < 128) {
-		_waitForData--;
-
-		// collect the data
-		_storedInputData[_waitForData] = inputData;
-
-		// we have all data executeMultiByteCommand
-		if (_waitForData == 0) {
-			switch (_executeMultiByteCommand) {
-			case MessageType::DIGITAL_IO_MESSAGE:
-				updateDigitalPort(_multiByteChannel, (_storedInputData[0] << 7) | _storedInputData[1]);
-				break;
-
-			case MessageType::PROTOCOL_VERSION:    // report version
-				_majorProtocolVersion = _storedInputData[1];
-				_minorProtocolVersion = _storedInputData[0];
-				ofNotifyEvent(EProtocolVersionReceived, _majorProtocolVersion, this);
-				break;
-
-			case MessageType::ANALOG_IO_MESSAGE:
-			{
-				int pinNum = _multiByteChannel;
-				int value = (_storedInputData[0] << 7) | _storedInputData[1];
-				if (pinNum >= _analog_pins.size())
-					break;
-				_updateAnalogPin(pinNum, value);
-
-				break;
-			}
-
-
-			}
-		}
-	}
-	// we have SysEx command data
-	else if (_waitForData < 0) {
-
-		// we have all sysex data
-		if (inputData == (int)MessageType::END_SYSEX) {
-			_waitForData = 0;
-			processSysExData(_sysExData);
-			_sysExData.clear();
-		}
-		// still have data, collect it
-		else {
-			_sysExData.push_back((unsigned char)inputData);
-		}
-	}
-	// we have a command
-	else {
+	if (_storedSerialData.size() == 0)
+	{
 		int command;
-
+		int channel_data;
 		// extract the command and channel info from a byte if it is less than 0xF0
-		if (inputData < 0xF0) {
+		if (inputData < (int)MessageType::START_SYSEX && inputData >= (int)MessageType::DIGITAL_IO_MESSAGE)
+		{
 			command = inputData & 0xF0;
-			_multiByteChannel = inputData & 0x0F;
+			channel_data = inputData & 0x0F;
 		}
-		else {
-			// commands in the 0xF* range don't use channel data
+		else
 			command = inputData;
-		}
 
-		switch (command) {
-		case MessageType::PROTOCOL_VERSION:
+		switch (command)
+		{
 		case MessageType::DIGITAL_IO_MESSAGE:
 		case MessageType::ANALOG_IO_MESSAGE:
-			_waitForData = 2;     // 2 bytes needed
-			_executeMultiByteCommand = command;
+			_storedSerialData.push_back(command);
+			_storedSerialData.push_back(channel_data);
 			break;
-
 		case MessageType::START_SYSEX:
-			_sysExData.clear();
-			_waitForData = -1;     // n bytes needed, -1 is used to indicate sysex message
-			_executeMultiByteCommand = command;
+		case MessageType::PROTOCOL_VERSION:
+			_storedSerialData.push_back(command);
+			break;
+		default:
+			break;
+		}
+	}
+	else
+	{
+		switch (_storedSerialData.front())
+		{
+		case MessageType::DIGITAL_IO_MESSAGE:
+			if (_storedSerialData.size() < 4)
+			{
+				if (inputData < 128)
+					_storedSerialData.push_back(inputData);
+			}
+			else
+			{
+				int pinNum = _storedSerialData[1];
+				int value = getValueFromTwo7bitBytes(_storedSerialData[2], _storedSerialData[3]);
+				_updateDigitalPort(pinNum, value);
+				_storedSerialData.clear();
+			}
+			break;
+		case MessageType::ANALOG_IO_MESSAGE:
+			if (_storedSerialData.size() < 4)
+			{
+				if (inputData < 128)
+					_storedSerialData.push_back(inputData);
+			}
+			else
+			{
+				int pinNum = _storedSerialData[1];
+				int value = getValueFromTwo7bitBytes(_storedSerialData[2], _storedSerialData[3]);
+				_updateAnalogPin(pinNum, value);
+				_storedSerialData.clear();
+			}
+			break;
+		case MessageType::START_SYSEX:
+			if (inputData != (int)MessageType::END_SYSEX)
+			{
+				_storedSerialData.push_back(inputData);
+			}
+			else
+			{
+				_processSysExData(_storedSerialData);
+				_storedSerialData.clear();
+			}
+			break;
+		case MessageType::PROTOCOL_VERSION:
+			if (_storedSerialData.size() < 3)
+			{
+				if (inputData < 128)
+					_storedSerialData.push_back(inputData);
+			}
+			else
+			{
+				_majorProtocolVersion = _storedSerialData[1];
+				_minorProtocolVersion = _storedSerialData[2];
+				ofNotifyEvent(EProtocolVersionReceived, _majorProtocolVersion, this);
+				_storedSerialData.clear();
+			}
+			break;
+		default:
 			break;
 		}
 	}
 }
 
 // sysex data is assumed to be 8-bit bytes split into two 7-bit bytes.
-void ofxFirmata::processSysExData(vector <unsigned char> data) {
+void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 	vector <unsigned char>::iterator it = data.begin();
 
 	auto next_char = [&]()
@@ -507,6 +535,9 @@ void ofxFirmata::processSysExData(vector <unsigned char> data) {
 		it++;
 		return c;
 	};
+
+	if (next_char() != (int)MessageType::START_SYSEX)
+		return;
 
 	// act on reserved sysEx messages (extended commands) or trigger SysEx event...
 	switch (next_char()) {  //first byte in buffer is command
@@ -615,7 +646,7 @@ void ofxFirmata::processSysExData(vector <unsigned char> data) {
 	}
 }
 
-void ofxFirmata::updateDigitalPort(int port, unsigned char value) {
+void ofxFirmata::_updateDigitalPort(int port, unsigned char value) {
 	unsigned char mask;
 	int previous;
 
@@ -643,8 +674,7 @@ void ofxFirmata::updateDigitalPort(int port, unsigned char value) {
 			}
 
 			// trigger an event if the pin has changed value
-			ReportStrategy s = _digital_pins[i].reportStrategy;
-			if (s == ReportStrategy::Always || (s == ReportStrategy::OnChange  && pin.history.front() != previous)) {
+			if (_digital_pins[i].reportStrategy == ReportStrategy::OnChange  && pin.history.front() != previous) {
 				ofNotifyEvent(EDigitalPinChanged, i, this);
 			}
 		}
@@ -689,7 +719,6 @@ void ofxFirmata::sendByte(unsigned char byte) {
 	//Logger::get("Application").information(msg);
 	_port.writeByte(byte);
 }
-
 
 void ofxFirmata::sendByte(MessageType msg)
 {
@@ -889,25 +918,25 @@ int ofxFirmata::getServo(int pin) const {
 
 void ofxFirmata::_updateAnalogPin(int pinNum, int value)
 {
+	if (pinNum >= _analog_pins.size())
+		return;
+
 	list <int>& history = _analog_pins[pinNum].history;
 	if (history.size() > 0) {
 		int previous = history.front();
 
 		history.push_front(value);
-		if ((int)history.size() > _analogHistoryLength) {
-			history.pop_back();
-		}
 
 		// trigger an event if the pin has changed value
-		ReportStrategy s = _analog_pins[pinNum].reportStrategy;
-		if (s == ReportStrategy::Always || (s == ReportStrategy::OnChange && history.front() != previous)) {
+		if (_analog_pins[pinNum].reportStrategy == ReportStrategy::OnChange && history.front() != previous) {
 			ofNotifyEvent(EAnalogPinChanged, pinNum, this);
 		}
 	}
 	else {
-		history.push_front((_storedInputData[0] << 7) | _storedInputData[1]);
-		if ((int)history.size() > _analogHistoryLength) {
-			history.pop_back();
-		}
+		history.push_front(value);
+	}
+
+	if ((int)history.size() > _analogHistoryLength) {
+		history.pop_back();
 	}
 }

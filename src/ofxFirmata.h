@@ -83,10 +83,10 @@ enum class MessageType
 	//SYSEX_NON_REALTIME    = 0x7E, // MIDI Reserved for non-realtime messages
 	//SYSEX_REALTIME        = 0x7F, // MIDI Reserved for realtime messages
 	//
-	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM) use EXTENDED_ANALOG instead
 	DIGITAL_IO_MESSAGE      = 0x90, // send data for a digital pin
 	REPORT_ANALOG_PIN       = 0xC0, // enable analog input by pin #
 	REPORT_DIGITAL_PORT     = 0xD0, // enable digital input by port pair
+	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM)
 	//				        
 	START_SYSEX             = 0xF0, // start a MIDI Sysex message
 	//					    
@@ -391,13 +391,7 @@ class ofxFirmata {
 		/// argument
 		ofEvent <const string> EStringReceived;
 
-		/// \}
-		/// \name Servos
-		/// \{
-
-		/// \}
-
-
+		string pinModeToString(PinMode mode);
 
 	protected:
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
@@ -415,10 +409,10 @@ class ofxFirmata {
 		// port 1: pins 8-13 (14,15 are disabled for the crystal)
 		// port 2: pins 16-21 analog pins used as digital, all analog reporting will be turned off if this is set to ARD_ON
 
-		void processData(unsigned char inputData);
-		void updateDigitalPort(int port, unsigned char value);
+		void _processSerialData(unsigned char inputData);
+		void _updateDigitalPort(int port, unsigned char value);
 		void _updateAnalogPin(int pinNum, int value);
-		virtual void processSysExData(vector <unsigned char> data);
+		virtual void _processSysExData(vector <unsigned char> data);
 
 		// the last set servo values
 		void sendByte(MessageType msg);
@@ -428,7 +422,6 @@ class ofxFirmata {
 		void sendPinStateQuery(int pin);
 
 		void tryInit();
-		string pinModeToString(PinMode mode);
 		ofSerial _port;
 
 		// --- history variables
@@ -437,14 +430,8 @@ class ofxFirmata {
 		int _stringHistoryLength = 1;
 		int _sysExHistoryLength = 1;
 
-		// --- data processing variables
-		int _waitForData = 0;
-		int _executeMultiByteCommand; ///< \brief Indicate Firmata command to execute.
-		int _multiByteChannel = 0; ///< \brief Indicates which pin the data came from.
-
 		// --- data holders
-		unsigned char _storedInputData[FIRMATA_MAX_DATA_BYTES];
-		vector <unsigned char> _sysExData;
+		vector <unsigned char> _storedSerialData;
 		int _majorProtocolVersion = 0;
 		int _minorProtocolVersion = 0;
 		int _majorFirmwareVersion = 0;
@@ -486,15 +473,12 @@ class ofxFirmata {
 		};
 
 		vector<AnalogPin> _analog_pins;
-		mutable vector<DigitalPin> _digital_pins;
+		vector<DigitalPin> _digital_pins;
 		vector<DigitalPort> _digital_ports;
 
 		bool _bUseDelay = true;
-
 		mutable bool _connected = false; ///< \brief This yields true if a serial connection to Arduino exists.
-
 		float _connectTime = 0.0f; ///< \brief This represents the (running) time of establishing a serial connection.
-
 };
 
 //typedef ofArduino ofStandardFirmata;
