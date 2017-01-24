@@ -102,6 +102,7 @@ enum class MessageType
 #undef SHIFT
 #undef I2C
 
+#if 0
 // pin modes
 enum class PinMode
 {
@@ -119,6 +120,29 @@ enum class PinMode
 	SERIAL         = 0x0A,
 	INPUT_PULLUP   = 0x0B,
 };
+
+#else
+#define VALUE_TABLE \
+ X(_NULL          , = -1   , "_NULL"          ) \
+ X(DIGITAL_INPUT  , = 0x00 , "DIGITAL_INPUT"  ) \
+ X(DIGITAL_OUTPUT , = 0x01 , "DIGITAL_OUTPUT" ) \
+ X(ANALOG_INPUT   , = 0x02 , "ANALOG_INPUT"   ) \
+ X(PWM            , = 0x03 , "PWM"            ) \
+ X(SERVO          , = 0x04 , "SERVO"          ) \
+ X(SHIFT          , = 0x05 , "SHIFT"          ) \
+ X(I2C            , = 0x06 , "I2C"            ) \
+ X(ONEWIRE        , = 0x07 , "ONEWIRE"        ) \
+ X(STEPPER        , = 0x08 , "STEPPER"        ) \
+ X(ENCODER        , = 0x09 , "ENCODER"        ) \
+ X(SERIAL         , = 0x0A , "SERIAL"         ) \
+ X(INPUT_PULLUP   , = 0x0B , "INPUT_PULLUP"   ) \
+
+#define X(a, b, c) a b,
+enum PinMode { VALUE_TABLE };
+#undef X
+extern const string ToString(PinMode value);
+extern const PinMode FromString(string value);
+#endif
 
 enum class DigitalValue
 {
@@ -391,7 +415,22 @@ class ofxFirmata {
 		/// argument
 		ofEvent <const string> EStringReceived;
 
-		string pinModeToString(PinMode mode);
+		int getPinNum()
+		{
+			return _pin_capabilites.size();
+		}
+
+		using PinResolution = int;
+		using PinCapability = map<PinMode, PinResolution>;
+		PinCapability getPinCapicity(int pin)
+		{
+			if (pin >= _pin_capabilites.size())
+				return map<PinMode, PinResolution>();
+			else
+			{
+				return _pin_capabilites[pin];
+			}
+		}
 
 	protected:
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
@@ -448,8 +487,6 @@ class ofxFirmata {
 		list <string> _stringHistory;
 		// maintains a history of received strings
 
-		using PinResolution = int;
-		using PinCapability = map<PinMode, PinResolution>;
 		vector<PinCapability> _pin_capabilites;
 
 		struct DigitalPin

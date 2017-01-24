@@ -44,6 +44,36 @@
 #include "ofxFirmata.h"
 #include "ofUtils.h"
 
+const string ToString(PinMode value)
+{
+	static std::map<PinMode, string> table;
+	static bool isInit = false;
+	if (isInit)
+		return table[value];
+
+#define X(a, b, c) table[a] = c;
+	VALUE_TABLE
+#undef X
+
+		isInit = true;
+	return table[value];
+}
+
+const PinMode FromString(string value)
+{
+	static std::map<string, PinMode> table;
+	static bool isInit = false;
+	if (isInit)
+		return table[value];
+
+#define X(a, b, c) table[c] = a;
+	VALUE_TABLE
+#undef X
+
+		isInit = true;
+	return table[value];
+}
+
  // TODO thread it?
  // TODO throw event or exception if the serial port goes down...
  //---------------------------------------------------------------------------
@@ -126,7 +156,7 @@ void ofxFirmata::update() {
 		if (history.size() == 0)
 			continue;
 
-		if (_analog_pins[i]->reportStrategy == ReportStrategy::Always) {
+		if (_analog_pins[i]->reportStrategy == ReportStrategy::Always && _analog_pins[i]->mode == PinMode::ANALOG_INPUT) {
 			ofNotifyEvent(EAnalogPinChanged, i, this);
 		}
 	}
@@ -136,7 +166,7 @@ void ofxFirmata::update() {
 		if (history.size() == 0)
 			continue;
 
-		if (_digital_pins[i].reportStrategy == ReportStrategy::Always) {
+		if (_digital_pins[i].reportStrategy == ReportStrategy::Always && _digital_pins[i].mode == PinMode::DIGITAL_INPUT) {
 			ofNotifyEvent(EDigitalPinChanged, i, this);
 		}
 	}
@@ -801,52 +831,6 @@ void ofxFirmata::tryInit()
 	}
 }
 
-std::string ofxFirmata::pinModeToString(PinMode mode)
-{
-	switch (mode)
-	{
-	case PinMode::DIGITAL_INPUT:
-		return "DIGITAL_INPUT";
-		break;
-	case PinMode::DIGITAL_OUTPUT:
-		return "DIGITAL_OUTPUT";
-		break;
-	case PinMode::ANALOG_INPUT:
-		return "ANALOG_INPUT";
-		break;
-	case PinMode::PWM:
-		return "PWM";
-		break;
-	case PinMode::SERVO:
-		return "SERVO";
-		break;
-	case PinMode::SHIFT:
-		return "SHIFT";
-		break;
-	case PinMode::I2C:
-		return "I2C";
-		break;
-	case PinMode::ONEWIRE:
-		return "ONEWIRE";
-		break;
-	case PinMode::STEPPER:
-		return "STEPPER";
-		break;
-	case PinMode::ENCODER:
-		return "ENCODER";
-		break;
-	case PinMode::SERIAL:
-		return "SERIAL";
-		break;
-	case PinMode::INPUT_PULLUP:
-		return "INPUT_PULLUP";
-		break;
-	default:
-		return "_NULL";
-		break;
-	}
-}
-
 // in Firmata (and MIDI) data bytes are 7-bits. The 8th bit serves as a flag to mark a byte as either command or data.
 // therefore you need two data bytes to send 8-bits (a char).
 void ofxFirmata::sendValueAsTwo7bitBytes(int value) {
@@ -934,7 +918,7 @@ void ofxFirmata::_printInfo()
 			printf("\tpin %2d: ", i);
 			for each (auto& pair in _pin_capabilites[i])
 			{
-				cout << pinModeToString(pair.first) << "[" << pair.second << "] ";
+				cout << ToString(pair.first) << "[" << pair.second << "] ";
 			}
 			cout << endl;
 		}
@@ -947,7 +931,7 @@ void ofxFirmata::_printInfo()
 		for (size_t i = 0; i < _digital_pins.size(); i++)
 		{
 			PinMode mode = _digital_pins[i].mode;
-			printf("\tpin %2d: %s\n", i, pinModeToString(mode).c_str());
+			printf("\tpin %2d: %s\n", i, ToString(mode).c_str());
 		}
 		printf("===============================================================\n\n\n");
 	}
