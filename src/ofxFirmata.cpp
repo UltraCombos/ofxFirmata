@@ -122,11 +122,11 @@ void ofxFirmata::update() {
 	}
 	for (int i = 0; i < _analog_pins.size(); i++)
 	{
-		list <int>& history = _analog_pins[i].history;
+		list <int>& history = _analog_pins[i]->history;
 		if (history.size() == 0)
 			continue;
 
-		if (_analog_pins[i].reportStrategy == ReportStrategy::Always) {
+		if (_analog_pins[i]->reportStrategy == ReportStrategy::Always) {
 			ofNotifyEvent(EAnalogPinChanged, i, this);
 		}
 	}
@@ -143,8 +143,8 @@ void ofxFirmata::update() {
 }
 
 int ofxFirmata::getAnalog(int pin) const {
-	if (_analog_pins[pin].history.size() > 0) {
-		return _analog_pins[pin].history.front();
+	if (_analog_pins[pin]->history.size() > 0) {
+		return _analog_pins[pin]->history.front();
 	}
 	else {
 		return -1;
@@ -300,15 +300,15 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrateg
 	if (pinNum >= _analog_pins.size() || _initialized == false)
 		return;
 
-	if (_analog_pins[pinNum].reportStrategy == reportStrategy && !force)
+	if (_analog_pins[pinNum]->reportStrategy == reportStrategy && !force)
 		return;
 
-	int d_pin = _analog_pins[pinNum].digitalPinNum;
-	DigitalPin& pin = _digital_pins[d_pin];
+	DigitalPin& pin = *_analog_pins[pinNum];
 
 	// if this analog pin is set as a digital input, disable digital pin reporting
 	if (pin.reportStrategy != ReportStrategy::None) {
-		sendDigitalPinReporting(d_pin, ReportStrategy::None);
+		
+		sendDigitalPinReporting(pin.pinNum, ReportStrategy::None);
 	}
 
 	pin.mode = PinMode::ANALOG_INPUT;
@@ -319,7 +319,7 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrateg
 	else
 		sendByte(0);
 
-	_analog_pins[pinNum].reportStrategy = reportStrategy;
+	_analog_pins[pinNum]->reportStrategy = reportStrategy;
 }
 
 void ofxFirmata::sendDigitalPinReporting(int pin, ReportStrategy reportStrategy) {
@@ -381,11 +381,11 @@ ofxFirmata::ReportStrategy ofxFirmata::getAnalogPinReporting(int pin) const {
 		ofLogWarning("");
 		return ReportStrategy::None;
 	}
-	return _analog_pins[pin].reportStrategy;
+	return _analog_pins[pin]->reportStrategy;
 }
 
 list <int> * ofxFirmata::getAnalogHistory(int pin) {
-	return &_analog_pins[pin].history;
+	return &_analog_pins[pin]->history;
 }
 
 list <int> * ofxFirmata::getDigitalHistory(int pin) {
@@ -614,7 +614,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 			else
 			{
 				_analog_pins.resize(c + 1);
-				_analog_pins[c].digitalPinNum = idx;
+				_analog_pins[c] = &_digital_pins[idx];
 			}
 			idx++;
 		}
@@ -626,6 +626,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		PinMode mode = (PinMode)next_char();
 		if (pin <= _digital_pins.size())
 		{
+			_digital_pins[pin].pinNum = pin;
 			_digital_pins[pin].mode = mode;
 			//printf("Pin State %2d is %s\n", pin, pinModeToString(mode).c_str());
 		}
@@ -755,26 +756,33 @@ void ofxFirmata::sendPinStateQuery(int pin)
 void ofxFirmata::tryInit()
 {
 	if (_minorFirmwareVersion == 0 && _majorFirmwareVersion == 0)
+	{
 		sendFirmwareVersionRequest();
+		return;
+	}
 
 	if (_pin_capabilites.size() == 0)
+	{
 		sendCapabilityQuery();
+		return;
+	}
+
+	if (_digital_pins.size() != _pin_capabilites.size())
+	{
+		_digital_pins.resize(_pin_capabilites.size());
+		// ports
+		int port_count = (_pin_capabilites.size() + 4) / 8;
+		_digital_ports.resize(port_count);
+		return;
+	}
 
 	if (_analog_pins.size() == 0)
-		sendAnalogMappingQuery();
-
-	if (_minorFirmwareVersion != 0 &&
-		_majorFirmwareVersion != 0 &&
-		_pin_capabilites.size() != 0 &&
-		_analog_pins.size() != 0)
 	{
-		if (_digital_pins.size() != _pin_capabilites.size())
-		{
-			_digital_pins.resize(_pin_capabilites.size());
-			// ports
-			int port_count = _pin_capabilites.size() / 8 + 1;
-			_digital_ports.resize(port_count);
-		}
+		sendAnalogMappingQuery();
+		return;
+	}
+
+	{
 		bool init_finished = true;
 		for (int i = 0; i < _pin_capabilites.size(); i++)
 		{
@@ -786,37 +794,7 @@ void ofxFirmata::tryInit()
 		}
 		if (init_finished == true)
 		{
-			printf("===================== Firmata Initialized =====================\n");
-			//report states
-			{
-				// print firmware name and version to the console
-				cout << getFirmwareName() << endl;
-				cout << "firmata v" << getMajorFirmwareVersion() << "." << getMinorFirmwareVersion() << endl;
-
-				printf("Pin Capability:\n");
-				for (int i = 0; i < _pin_capabilites.size(); i++)
-				{
-					printf("\tpin %2d: ", i);
-					for each (auto& pair in _pin_capabilites[i])
-					{
-						cout << pinModeToString(pair.first) << "[" << pair.second << "] ";
-					}
-					cout << endl;
-				}
-				printf("\nAnalog Mapping:\n");
-				for (int i = 0; i < _analog_pins.size(); i++)
-				{
-					printf("\ta[%2d] = d[%2d]\n", i, _analog_pins[i].digitalPinNum);
-				}
-				printf("\nPin State:\n");
-				for (size_t i = 0; i < _digital_pins.size(); i++)
-				{
-					PinMode mode = _digital_pins[i].mode;
-					printf("\tpin %2d: %s\n", i, pinModeToString(mode).c_str());
-				}
-				printf("===============================================================\n\n\n");
-			}
-
+			_printInfo();
 			_initialized = true;
 			ofNotifyEvent(EInitialized, _majorFirmwareVersion, this);
 		}
@@ -918,17 +896,17 @@ int ofxFirmata::getServo(int pin) const {
 
 void ofxFirmata::_updateAnalogPin(int pinNum, int value)
 {
-	if (pinNum >= _analog_pins.size())
+	if (pinNum >= _analog_pins.size() || _analog_pins[pinNum] == nullptr)
 		return;
 
-	list <int>& history = _analog_pins[pinNum].history;
+	list <int>& history = _analog_pins[pinNum]->history;
 	if (history.size() > 0) {
 		int previous = history.front();
 
 		history.push_front(value);
 
 		// trigger an event if the pin has changed value
-		if (_analog_pins[pinNum].reportStrategy == ReportStrategy::OnChange && history.front() != previous) {
+		if (_analog_pins[pinNum]->reportStrategy == ReportStrategy::OnChange && history.front() != previous) {
 			ofNotifyEvent(EAnalogPinChanged, pinNum, this);
 		}
 	}
@@ -938,5 +916,39 @@ void ofxFirmata::_updateAnalogPin(int pinNum, int value)
 
 	if ((int)history.size() > _analogHistoryLength) {
 		history.pop_back();
+	}
+}
+
+void ofxFirmata::_printInfo()
+{
+	printf("===================== Firmata Initialized =====================\n");
+	//report states
+	{
+		// print firmware name and version to the console
+		cout << getFirmwareName() << endl;
+		cout << "firmata v" << getMajorFirmwareVersion() << "." << getMinorFirmwareVersion() << endl;
+
+		printf("Pin Capability:\n");
+		for (int i = 0; i < _pin_capabilites.size(); i++)
+		{
+			printf("\tpin %2d: ", i);
+			for each (auto& pair in _pin_capabilites[i])
+			{
+				cout << pinModeToString(pair.first) << "[" << pair.second << "] ";
+			}
+			cout << endl;
+		}
+		printf("\nAnalog Mapping:\n");
+		for (int i = 0; i < _analog_pins.size(); i++)
+		{
+			printf("\ta[%2d] = d[%2d]\n", i, _analog_pins[i]->pinNum);
+		}
+		printf("\nPin State:\n");
+		for (size_t i = 0; i < _digital_pins.size(); i++)
+		{
+			PinMode mode = _digital_pins[i].mode;
+			printf("\tpin %2d: %s\n", i, pinModeToString(mode).c_str());
+		}
+		printf("===============================================================\n\n\n");
 	}
 }

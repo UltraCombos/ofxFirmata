@@ -422,6 +422,7 @@ class ofxFirmata {
 		void sendPinStateQuery(int pin);
 
 		void tryInit();
+		void _printInfo();
 		ofSerial _port;
 
 		// --- history variables
@@ -451,15 +452,9 @@ class ofxFirmata {
 		using PinCapability = map<PinMode, PinResolution>;
 		vector<PinCapability> _pin_capabilites;
 
-		struct AnalogPin
-		{
-			int digitalPinNum = -1;
-			ReportStrategy reportStrategy = ReportStrategy::None;
-			list <int> history;
-		};
-
 		struct DigitalPin
 		{
+			int pinNum = -1;
 			PinMode mode = PinMode::_NULL;
 			int value = -1;
 			ReportStrategy reportStrategy = ReportStrategy::None;
@@ -472,7 +467,7 @@ class ofxFirmata {
 			bool reporting = false;
 		};
 
-		vector<AnalogPin> _analog_pins;
+		vector<DigitalPin*> _analog_pins;
 		vector<DigitalPin> _digital_pins;
 		vector<DigitalPort> _digital_ports;
 
