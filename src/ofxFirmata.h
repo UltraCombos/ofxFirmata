@@ -432,6 +432,16 @@ class ofxFirmata {
 			}
 		}
 
+		int get_analog_pin_from_digital(int digital_pin)
+		{
+			for (int i = 0; i < _analog_pins.size(); i++)
+			{
+				if (_analog_pins[i]->pinNum == digital_pin)
+					return i;
+			}
+			return -1;
+		}
+
 	protected:
 		mutable bool _initialized = false; ///\< \brief Indicate that pins are initialized.
 
