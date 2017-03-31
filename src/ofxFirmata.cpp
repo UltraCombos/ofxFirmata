@@ -154,7 +154,10 @@ void ofxFirmata::update() {
 	{
 		bool reporting = _digital_ports[i].reporting;
 		if (reporting)
+		{
 			sendDigitalPortReporting(i, reporting);
+			sendDigitalPortReporting(i, reporting);//send twice to for update in the same frame
+		}
 	}
 	for (int i = 0; i < _analog_pins.size(); i++)
 	{
@@ -678,7 +681,7 @@ void ofxFirmata::_updateDigitalPort(int port, unsigned char value) {
 	unsigned char mask;
 	int previous;
 
-	printf("_updateDigitalPort %d %s\n", port, ofToBinary(value).c_str());
+	//printf("_updateDigitalPort %d %s\n", port, ofToBinary(value).c_str());
 
 	for (int i = port * 8; i < port * 8 + 8; ++i) {
 		previous = -1;
@@ -715,33 +718,7 @@ void ofxFirmata::sendDigitalPortReporting(int port, bool reporting) {
 	sendByte(reporting);
 	_digital_ports[port].reporting = reporting;
 
-	printf("sendDigitalPortReporting port%d report%d\n", port, (int)reporting);
-
-	//TODO check necessity of these code
-#if 0
-	int offset;
-
-	if (_firmwareVersionSum >= FIRMWARE2_3) {
-		offset = 2;
-	}
-	else {
-		offset = 0;
-	}
-
-	// for Firmata 2.3 and higher:
-	if (port == 1 && mode == ARD_ON) {
-		for (int i = 0; i < 2; i++) {
-			_analogPinReporting[i] = ARD_OFF;
-		}
-	}
-
-	// for Firmata 2.3 and all prior Firmata protocol versions:
-	if (port == 2 && mode == ARD_ON) { // if reporting is turned on on port 2 then ofArduino on the Arduino disables all analog reporting
-		for (int i = offset; i < ARD_TOTAL_ANALOG_PINS; i++) {
-			_analogPinReporting[i] = ARD_OFF;
-		}
-	}
-#endif
+	//printf("sendDigitalPortReporting port%d report%d\n", port, (int)reporting);
 }
 
 void ofxFirmata::sendByte(unsigned char byte) {
