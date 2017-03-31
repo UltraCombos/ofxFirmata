@@ -422,7 +422,7 @@ class ofxFirmata {
 
 		using PinResolution = int;
 		using PinCapability = map<PinMode, PinResolution>;
-		PinCapability getPinCapicity(int pin)
+		PinCapability getPinCapibility(int pin)
 		{
 			if (pin >= _pin_capabilites.size())
 				return map<PinMode, PinResolution>();

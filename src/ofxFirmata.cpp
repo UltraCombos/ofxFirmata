@@ -150,6 +150,12 @@ void ofxFirmata::update() {
 			_processSerialData((char)(bytesToProcess[i]));
 		}
 	}
+	for (int i = 0; i < _digital_ports.size(); i++)
+	{
+		bool reporting = _digital_ports[i].reporting;
+		if (reporting)
+			sendDigitalPortReporting(i, reporting);
+	}
 	for (int i = 0; i < _analog_pins.size(); i++)
 	{
 		list <int>& history = _analog_pins[i]->history;
@@ -337,7 +343,6 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrateg
 
 	// if this analog pin is set as a digital input, disable digital pin reporting
 	if (pin.reportStrategy != ReportStrategy::None) {
-		
 		sendDigitalPinReporting(pin.pinNum, ReportStrategy::None);
 	}
 
@@ -364,12 +369,6 @@ void ofxFirmata::sendDigitalPinReporting(int pin, ReportStrategy reportStrategy)
 
 	if (reportStrategy != ReportStrategy::None) {
 		sendDigitalPortReporting(port, true);
-// 		sendDigitalPortReporting(0, true);
-// 		sendDigitalPortReporting(1, true);
-// 		sendDigitalPortReporting(2, true);
-// 		sendDigitalPortReporting(3, true);
-// 		sendDigitalPortReporting(4, true);
-// 		sendDigitalPortReporting(5, true);
 	}
 	else {
 		bool send = true;
@@ -457,8 +456,8 @@ bool ofxFirmata::isInitialized() const {
 // ------------------------------ private functions
 
 void ofxFirmata::_processSerialData(unsigned char inputData) {
-	char msg[100];
-	sprintf(msg, "Received Byte: %i", inputData);
+	//char msg[100];
+	//sprintf(msg, "Received Byte: %i", inputData);
 	//Logger::get("Application").information(msg);
 
 	if (_storedSerialData.size() == 0)
@@ -658,13 +657,11 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		{
 			_digital_pins[pin].pinNum = pin;
 			_digital_pins[pin].mode = mode;
-			//printf("Pin State %2d is %s\n", pin, pinModeToString(mode).c_str());
 		}
 		while (it != data.end())
 		{
 			next_char();
 		}
-
 	}
 	break;
 	default:    // the message isn't in Firmatas extended command set
@@ -681,7 +678,7 @@ void ofxFirmata::_updateDigitalPort(int port, unsigned char value) {
 	unsigned char mask;
 	int previous;
 
-	printf("%d %s\n", port, ofToBinary(value).c_str());
+	printf("_updateDigitalPort %d %s\n", port, ofToBinary(value).c_str());
 
 	for (int i = port * 8; i < port * 8 + 8; ++i) {
 		previous = -1;
@@ -696,9 +693,10 @@ void ofxFirmata::_updateDigitalPort(int port, unsigned char value) {
 			if (pin.history.size() > 0) {
 				previous = pin.history.front();
 			}
-
-			mask = 1 << i;
-			pin.history.push_front((value & mask) >> i);
+			int shift = (i % 8);
+			mask = 1 << shift;
+			int v = (value & mask) >> shift;
+			pin.history.push_front(v);
 
 			if ((int)pin.history.size() > _digitalHistoryLength) {
 				pin.history.pop_back();
@@ -716,6 +714,8 @@ void ofxFirmata::sendDigitalPortReporting(int port, bool reporting) {
 	sendByte((int)MessageType::REPORT_DIGITAL_PORT + port);
 	sendByte(reporting);
 	_digital_ports[port].reporting = reporting;
+
+	printf("sendDigitalPortReporting port%d report%d\n", port, (int)reporting);
 
 	//TODO check necessity of these code
 #if 0
@@ -801,7 +801,7 @@ void ofxFirmata::tryInit()
 	{
 		_digital_pins.resize(_pin_capabilites.size());
 		// ports
-		int port_count = (_pin_capabilites.size() + 4) / 8;
+		int port_count = (_pin_capabilites.size() + 7) / 8;
 		_digital_ports.resize(port_count);
 		return;
 	}
@@ -886,17 +886,11 @@ void ofxFirmata::_updateAnalogPin(int pinNum, int value)
 	list <int>& history = _analog_pins[pinNum]->history;
 	if (history.size() > 0) {
 		int previous = history.front();
-
-		history.push_front(value);
-
-		// trigger an event if the pin has changed value
-		if (_analog_pins[pinNum]->reportStrategy == ReportStrategy::OnChange && history.front() != previous) {
+		if (_analog_pins[pinNum]->reportStrategy == ReportStrategy::OnChange && value != previous) {
 			ofNotifyEvent(EAnalogPinChanged, pinNum, this);
 		}
 	}
-	else {
-		history.push_front(value);
-	}
+	history.push_front(value);
 
 	if ((int)history.size() > _analogHistoryLength) {
 		history.pop_back();
@@ -906,33 +900,29 @@ void ofxFirmata::_updateAnalogPin(int pinNum, int value)
 void ofxFirmata::_printInfo()
 {
 	printf("===================== Firmata Initialized =====================\n");
-	//report states
-	{
-		// print firmware name and version to the console
-		cout << getFirmwareName() << endl;
-		cout << "firmata v" << getMajorFirmwareVersion() << "." << getMinorFirmwareVersion() << endl;
+	cout << getFirmwareName() << endl;
+	cout << "firmata v" << getMajorFirmwareVersion() << "." << getMinorFirmwareVersion() << endl;
 
-		printf("Pin Capability:\n");
-		for (int i = 0; i < _pin_capabilites.size(); i++)
+	printf("Pin Capability:\n");
+	for (int i = 0; i < _pin_capabilites.size(); i++)
+	{
+		printf("\tpin %2d: ", i);
+		for each (auto& pair in _pin_capabilites[i])
 		{
-			printf("\tpin %2d: ", i);
-			for each (auto& pair in _pin_capabilites[i])
-			{
-				cout << ToString(pair.first) << "[" << pair.second << "] ";
-			}
-			cout << endl;
+			printf("%s[%d] ", ToString(pair.first).c_str(), pair.second);
 		}
-		printf("\nAnalog Mapping:\n");
-		for (int i = 0; i < _analog_pins.size(); i++)
-		{
-			printf("\ta[%2d] = d[%2d]\n", i, _analog_pins[i]->pinNum);
-		}
-		printf("\nPin State:\n");
-		for (size_t i = 0; i < _digital_pins.size(); i++)
-		{
-			PinMode mode = _digital_pins[i].mode;
-			printf("\tpin %2d: %s\n", i, ToString(mode).c_str());
-		}
-		printf("===============================================================\n\n\n");
+		cout << endl;
 	}
+	printf("\nAnalog Mapping:\n");
+	for (int i = 0; i < _analog_pins.size(); i++)
+	{
+		printf("\ta[%2d] = d[%2d]\n", i, _analog_pins[i]->pinNum);
+	}
+	printf("\nPin State:\n");
+	for (size_t i = 0; i < _digital_pins.size(); i++)
+	{
+		PinMode mode = _digital_pins[i].mode;
+		printf("\tpin %2d: %s\n", i, ToString(mode).c_str());
+	}
+	printf("===============================================================\n\n\n");
 }
