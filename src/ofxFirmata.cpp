@@ -43,7 +43,8 @@
 
 #include "ofxFirmata.h"
 #include "ofUtils.h"
-
+#include "ofLog.h"
+using namespace std;
 const string ToString(PinMode value)
 {
 	static std::map<PinMode, string> table;
@@ -259,10 +260,10 @@ void ofxFirmata::sendDigital(int pinNum, DigitalValue value, bool force /*= fals
 	}
 
 #if 0
-	sendByte((int)MessageType::DIGITAL_IO_MESSAGE + port);
+	sendByte((int)MessageType::UC_DIGITAL_IO_MESSAGE + port);
 	sendValueAsTwo7bitBytes(_digitalPortValue[port]);
 #else
-	sendByte(MessageType::SET_DIGITAL_PIN_VALUE);
+	sendByte(MessageType::UC_SET_DIGITAL_PIN_VALUE);
 	sendByte(pinNum);
 	sendByte((int)value);
 #endif
@@ -299,40 +300,40 @@ void ofxFirmata::sendSysEx(MessageType command, vector <unsigned char> data) {
 
 void ofxFirmata::sendSysEx(MessageType command)
 {
-	sendByte(MessageType::START_SYSEX);
+	sendByte(MessageType::UC_START_SYSEX);
 	sendByte(command);
-	sendByte(MessageType::END_SYSEX);
+	sendByte(MessageType::UC_END_SYSEX);
 }
 
 void ofxFirmata::sendSysExBegin() {
-	sendByte(MessageType::START_SYSEX);
+	sendByte(MessageType::UC_START_SYSEX);
 }
 
 void ofxFirmata::sendSysExEnd() {
-	sendByte(MessageType::END_SYSEX);
+	sendByte(MessageType::UC_END_SYSEX);
 }
 
 void ofxFirmata::sendString(string str) {
-	sendByte(MessageType::START_SYSEX);
-	sendByte(MessageType::STRING_DATA);
+	sendByte(MessageType::UC_START_SYSEX);
+	sendByte(MessageType::UC_STRING_DATA);
 	string::iterator it = str.begin();
 	while (it != str.end()) {
 		sendValueAsTwo7bitBytes(*it);
 		it++;
 	}
-	sendByte(MessageType::END_SYSEX);
+	sendByte(MessageType::UC_END_SYSEX);
 }
 
 void ofxFirmata::sendProtocolVersionRequest() {
-	sendByte(MessageType::PROTOCOL_VERSION);
+	sendByte(MessageType::UC_PROTOCOL_VERSION);
 }
 
 void ofxFirmata::sendFirmwareVersionRequest() {
-	sendSysEx(MessageType::REPORT_FIRMWARE);
+	sendSysEx(MessageType::UC_REPORT_FIRMWARE);
 }
 
 void ofxFirmata::sendReset() {
-	sendByte(MessageType::SYSTEM_RESET);
+	sendByte(MessageType::UC_SYSTEM_RESET);
 }
 
 void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrategy, bool force /*=false*/) {
@@ -351,7 +352,7 @@ void ofxFirmata::sendAnalogPinReporting(int pinNum, ReportStrategy reportStrateg
 
 	pin.mode = PinMode::ANALOG_INPUT;
 
-	sendByte((int)MessageType::REPORT_ANALOG_PIN + pinNum);
+	sendByte((int)MessageType::UC_REPORT_ANALOG_PIN + pinNum);
 	if(reportStrategy != ReportStrategy::None)
 		sendByte(1);
 	else
@@ -393,7 +394,7 @@ void ofxFirmata::sendDigitalPinMode(int pin, PinMode mode, bool force /*=false*/
 	if (_digital_pins[pin].mode == mode && !force)
 		return;
 
-	sendByte(MessageType::SET_PIN_MODE);
+	sendByte(MessageType::UC_SET_PIN_MODE);
 	sendByte(pin);
 	sendByte((int)mode);
 	_digital_pins[pin].mode = mode;
@@ -468,7 +469,7 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 		int command;
 		int channel_data;
 		// extract the command and channel info from a byte if it is less than 0xF0
-		if (inputData < (int)MessageType::START_SYSEX && inputData >= (int)MessageType::DIGITAL_IO_MESSAGE)
+		if (inputData < (int)MessageType::UC_START_SYSEX && inputData >= (int)MessageType::UC_DIGITAL_IO_MESSAGE)
 		{
 			command = inputData & 0xF0;
 			channel_data = inputData & 0x0F;
@@ -478,13 +479,13 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 
 		switch (command)
 		{
-		case MessageType::DIGITAL_IO_MESSAGE:
-		case MessageType::ANALOG_IO_MESSAGE:
+		case MessageType::UC_DIGITAL_IO_MESSAGE:
+		case MessageType::UC_ANALOG_IO_MESSAGE:
 			_storedSerialData.push_back(command);
 			_storedSerialData.push_back(channel_data);
 			break;
-		case MessageType::START_SYSEX:
-		case MessageType::PROTOCOL_VERSION:
+		case MessageType::UC_START_SYSEX:
+		case MessageType::UC_PROTOCOL_VERSION:
 			_storedSerialData.push_back(command);
 			break;
 		default:
@@ -495,7 +496,7 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 	{
 		switch (_storedSerialData.front())
 		{
-		case MessageType::DIGITAL_IO_MESSAGE:
+		case MessageType::UC_DIGITAL_IO_MESSAGE:
 			if (_storedSerialData.size() < 4)
 			{
 				if (inputData < 128)
@@ -509,7 +510,7 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 				_storedSerialData.clear();
 			}
 			break;
-		case MessageType::ANALOG_IO_MESSAGE:
+		case MessageType::UC_ANALOG_IO_MESSAGE:
 			if (_storedSerialData.size() < 4)
 			{
 				if (inputData < 128)
@@ -523,8 +524,8 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 				_storedSerialData.clear();
 			}
 			break;
-		case MessageType::START_SYSEX:
-			if (inputData != (int)MessageType::END_SYSEX)
+		case MessageType::UC_START_SYSEX:
+			if (inputData != (int)MessageType::UC_END_SYSEX)
 			{
 				_storedSerialData.push_back(inputData);
 			}
@@ -534,7 +535,7 @@ void ofxFirmata::_processSerialData(unsigned char inputData) {
 				_storedSerialData.clear();
 			}
 			break;
-		case MessageType::PROTOCOL_VERSION:
+		case MessageType::UC_PROTOCOL_VERSION:
 			if (_storedSerialData.size() < 3)
 			{
 				if (inputData < 128)
@@ -568,12 +569,12 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		return c;
 	};
 
-	if (next_char() != (int)MessageType::START_SYSEX)
+	if (next_char() != (int)MessageType::UC_START_SYSEX)
 		return;
 
 	// act on reserved sysEx messages (extended commands) or trigger SysEx event...
 	switch (next_char()) {  //first byte in buffer is command
-	case MessageType::REPORT_FIRMWARE:
+	case MessageType::UC_REPORT_FIRMWARE:
 	{
 		_majorFirmwareVersion = next_char();
 		_minorFirmwareVersion = next_char();
@@ -593,7 +594,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 	}
 	break;
 
-	case MessageType::STRING_DATA:
+	case MessageType::UC_STRING_DATA:
 	{
 		string str;
 		unsigned char buffer;
@@ -612,7 +613,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		ofNotifyEvent(EStringReceived, str, this);
 	}
 	break;
-	case MessageType::CAPABILITY_RESPONSE:
+	case MessageType::UC_CAPABILITY_RESPONSE:
 	{
 		_pin_capabilites.clear();
 		_pin_capabilites.emplace_back(map<PinMode, int>());
@@ -633,7 +634,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		_pin_capabilites.pop_back();
 	}
 	break;
-	case MessageType::ANALOG_MAPPING_RESPONSE:
+	case MessageType::UC_ANALOG_MAPPING_RESPONSE:
 	{
 		_analog_pins.clear();
 		int idx = 0;
@@ -652,7 +653,7 @@ void ofxFirmata::_processSysExData(vector <unsigned char> data) {
 		}
 	}
 	break;
-	case MessageType::PIN_STATE_RESPONSE:
+	case MessageType::UC_PIN_STATE_RESPONSE:
 	{
 		int pin = next_char();
 		PinMode mode = (PinMode)next_char();
@@ -714,7 +715,7 @@ void ofxFirmata::_updateDigitalPort(int port, unsigned char value) {
 }
 
 void ofxFirmata::sendDigitalPortReporting(int port, bool reporting) {
-	sendByte((int)MessageType::REPORT_DIGITAL_PORT + port);
+	sendByte((int)MessageType::UC_REPORT_DIGITAL_PORT + port);
 	sendByte(reporting);
 	_digital_ports[port].reporting = reporting;
 
@@ -735,18 +736,18 @@ void ofxFirmata::sendByte(MessageType msg)
 
 void ofxFirmata::sendCapabilityQuery()
 {
-	sendSysEx(MessageType::CAPABILITY_QUERY);
+	sendSysEx(MessageType::UC_CAPABILITY_QUERY);
 }
 
 void ofxFirmata::sendAnalogMappingQuery()
 {
-	sendSysEx(MessageType::ANALOG_MAPPING_QUERY);
+	sendSysEx(MessageType::UC_ANALOG_MAPPING_QUERY);
 }
 
 void ofxFirmata::sendExtendedAnalog(int pin, int value)
 {
 	sendSysExBegin();
-	sendByte(MessageType::EXTENDED_ANALOG);
+	sendByte(MessageType::UC_EXTENDED_ANALOG);
 	sendByte(pin);
 	sendValueAsTwo7bitBytes(value);
 	sendSysExEnd();
@@ -755,7 +756,7 @@ void ofxFirmata::sendExtendedAnalog(int pin, int value)
 void ofxFirmata::sendPinStateQuery(int pin)
 {
 	sendSysExBegin();
-	sendByte(MessageType::PIN_STATE_QUERY);
+	sendByte(MessageType::UC_PIN_STATE_QUERY);
 	sendByte(pin);
 	sendSysExEnd();
 }
@@ -832,12 +833,12 @@ void ofxFirmata::sendServo(int pin, int value, bool force) {
 
 // angle parameter is no longer supported. keeping for backwards compatibility
 void ofxFirmata::sendServoConfig(int pin, int minPulse /*= 544*/, int maxPulse /*= 2400*/) {
-	sendByte(MessageType::START_SYSEX);
-	sendByte(MessageType::SERVO_CONFIG);
+	sendByte(MessageType::UC_START_SYSEX);
+	sendByte(MessageType::UC_SERVO_CONFIG);
 	sendByte(pin);
 	sendValueAsTwo7bitBytes(minPulse);
 	sendValueAsTwo7bitBytes(maxPulse);
-	sendByte(MessageType::END_SYSEX);
+	sendByte(MessageType::UC_END_SYSEX);
 	_digital_pins[pin].mode = PinMode::SERVO;
 }
 

@@ -27,6 +27,8 @@
 #pragma once
 
 #include <list>
+#include <map>
+#include <string>
 #include "ofConstants.h"
 
 #include "ofEvents.h"
@@ -42,7 +44,7 @@
 #define FIRMATA_MAJOR_VERSION   2 // for non-compatible changes
 #define FIRMATA_MINOR_VERSION   0 // for backwards compatible changes
 #define FIRMATA_MAX_DATA_BYTES 32 // max number of data bytes in non-Sysex messages
-
+/*
 #undef ANALOG_MAPPING_QUERY
 #undef ANALOG_MAPPING_RESPONSE
 #undef CAPABILITY_QUERY
@@ -55,48 +57,48 @@
 #undef I2C_REPLY
 #undef I2C_CONFIG
 #undef SAMPLING_INTERVAL
-
+*/
 // message command bytes (128-255/0x80-0xFF)
 enum class MessageType
 {
 	// extended command set using SysEx (0-127/0x00-0x7F)
 	/* 0x00-0x0F reserved for custom commands */
-	ANALOG_MAPPING_QUERY    = 0x69, // ask for mapping of analog to pin numbers
-	ANALOG_MAPPING_RESPONSE = 0x6A, // reply with mapping info
-	CAPABILITY_QUERY        = 0x6B, // ask for supported modes and resolution of all pins
-	CAPABILITY_RESPONSE     = 0x6C, // reply with supported modes and resolution
-	PIN_STATE_QUERY         = 0x6D, // ask for a pin's current mode and value
-	PIN_STATE_RESPONSE      = 0x6E, // reply with pin's current mode and value
-	EXTENDED_ANALOG         = 0x6F, // analog write (PWM, Servo, etc) to any pin
+	UC_ANALOG_MAPPING_QUERY    = 0x69, // ask for mapping of analog to pin numbers
+	UC_ANALOG_MAPPING_RESPONSE = 0x6A, // reply with mapping info
+	UC_CAPABILITY_QUERY        = 0x6B, // ask for supported modes and resolution of all pins
+	UC_CAPABILITY_RESPONSE     = 0x6C, // reply with supported modes and resolution
+	UC_PIN_STATE_QUERY         = 0x6D, // ask for a pin's current mode and value
+	UC_PIN_STATE_RESPONSE      = 0x6E, // reply with pin's current mode and value
+	UC_EXTENDED_ANALOG         = 0x6F, // analog write (PWM, Servo, etc) to any pin
 	//
-	SERVO_CONFIG            = 0x70, // set max angle, minPulse, maxPulse, freq
-	STRING_DATA             = 0x71, // a string message with 14-bits per char
+	UC_SERVO_CONFIG            = 0x70, // set max angle, minPulse, maxPulse, freq
+	UC_STRING_DATA             = 0x71, // a string message with 14-bits per char
 	//
-	SHIFT_DATA              = 0x75, // a bitstram to/from a shift register
-	I2C_REQUEST             = 0x76, // send an I2C read/write request
-	I2C_REPLY               = 0x77, // a reply to an I2C request
-	I2C_CONFIG              = 0x78, // config I2C settings such as delay times and power pins
-	REPORT_FIRMWARE         = 0x79, // report name and version of the firmware
+	UC_SHIFT_DATA              = 0x75, // a bitstram to/from a shift register
+	UC_I2C_REQUEST             = 0x76, // send an I2C read/write request
+	UC_I2C_REPLY               = 0x77, // a reply to an I2C request
+	UC_I2C_CONFIG              = 0x78, // config I2C settings such as delay times and power pins
+	UC_REPORT_FIRMWARE         = 0x79, // report name and version of the firmware
 	//
-	SAMPLING_INTERVAL       = 0x7A, // set the poll rate of the main loop
+	UC_SAMPLING_INTERVAL       = 0x7A, // set the poll rate of the main loop
 	//
-	//SYSEX_NON_REALTIME    = 0x7E, // MIDI Reserved for non-realtime messages
-	//SYSEX_REALTIME        = 0x7F, // MIDI Reserved for realtime messages
+	//UC_SYSEX_NON_REALTIME    = 0x7E, // MIDI Reserved for non-realtime messages
+	//UC_SYSEX_REALTIME        = 0x7F, // MIDI Reserved for realtime messages
 	//
-	DIGITAL_IO_MESSAGE      = 0x90, // send data for a digital pin
-	REPORT_ANALOG_PIN       = 0xC0, // enable analog input by pin #
-	REPORT_DIGITAL_PORT     = 0xD0, // enable digital input by port pair
-	ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM)
+	UC_DIGITAL_IO_MESSAGE      = 0x90, // send data for a digital pin
+	UC_REPORT_ANALOG_PIN       = 0xC0, // enable analog input by pin #
+	UC_REPORT_DIGITAL_PORT     = 0xD0, // enable digital input by port pair
+	UC_ANALOG_IO_MESSAGE       = 0xE0, // send data for an analog pin (or PWM)
 	//				        
-	START_SYSEX             = 0xF0, // start a MIDI Sysex message
+	UC_START_SYSEX             = 0xF0, // start a MIDI Sysex message
 	//					    
-	SET_PIN_MODE            = 0xF4, // set a pin to INPUT/OUTPUT/PWM/etc
-	SET_DIGITAL_PIN_VALUE   = 0xF5, // set a pin to INPUT/OUTPUT/PWM/etc
+	UC_SET_PIN_MODE            = 0xF4, // set a pin to INPUT/OUTPUT/PWM/etc
+	UC_SET_DIGITAL_PIN_VALUE   = 0xF5, // set a pin to INPUT/OUTPUT/PWM/etc
 	//					    
-	END_SYSEX               = 0xF7, // end a MIDI Sysex message
-	PROTOCOL_VERSION        = 0xF9, // report protocol version 	major version	minor version
+	UC_END_SYSEX               = 0xF7, // end a MIDI Sysex message
+	UC_PROTOCOL_VERSION        = 0xF9, // report protocol version 	major version	minor version
 	//					    
-	SYSTEM_RESET            = 0xFF, // reset from MIDI
+	UC_SYSTEM_RESET            = 0xFF, // reset from MIDI
 };
 
 #undef SHIFT
@@ -140,8 +142,8 @@ enum class PinMode
 #define X(a, b, c) a b,
 enum PinMode { VALUE_TABLE };
 #undef X
-extern const string ToString(PinMode value);
-extern const PinMode FromString(string value);
+extern const std::string ToString(PinMode value);
+extern const PinMode FromString(std::string value);
 #endif
 
 enum class DigitalValue
@@ -301,7 +303,7 @@ class ofxFirmata {
 		/// \returns the last set servo value for a pin if the pin has a servo attached.
 		int getServo(int pin) const;
 
-		void sendSysEx(MessageType command, vector <unsigned char> data);
+		void sendSysEx(MessageType command, std::vector <unsigned char> data);
 		void sendSysEx(MessageType command);
 
 		/// \brief Sends the `FIRMATA_START_SYSEX` command
@@ -312,7 +314,7 @@ class ofxFirmata {
 
 		/// \brief Send a string to the Arduino
 		/// \note Firmata can not handle strings longer than 12 characters.
-		void sendString(string str);
+		void sendString(std::string str);
 
 		/// \brief This will cause your Arduino to reset and boot into the program again.
 		void sendReset();
@@ -340,10 +342,10 @@ class ofxFirmata {
 		int getValueFromTwo7bitBytes(unsigned char lsb, unsigned char msb);
 
 		/// \returns the last received SysEx message.
-		vector <unsigned char> getSysEx() const;
+		std::vector <unsigned char> getSysEx() const;
 
 		/// \returns the last received string.
-		string getString() const;
+		std::string getString() const;
 
 		/// \brief Returns the major firmware version
 		int getMajorProtocolVersion() const;
@@ -358,7 +360,7 @@ class ofxFirmata {
 		int getMinorFirmwareVersion() const;
 
 		/// \returns the name of the firmware.
-		string getFirmwareName() const;
+		std::string getFirmwareName() const;
 
 		void setDigitalHistoryLength(int length);
 		/// \brief Returns a pointer to the digital data history list for the
@@ -366,21 +368,21 @@ class ofxFirmata {
 		/// \note Pin 16-21 can also be used if analog inputs 0-5 are used as
 		/// digital pins
 		/// \param pin The pin number (2-13)
-		list <int> * getDigitalHistory(int pin);
+		std::list <int> * getDigitalHistory(int pin);
 
 		void setAnalogHistoryLength(int length);
 		/// \brief Returns a pointer to the analog data history list for the given pin.
 		/// \param pin The Arduino Uno pin: 0-5
-		list <int> * getAnalogHistory(int pin);
+		std::list <int> * getAnalogHistory(int pin);
 
 		void setStringHistoryLength(int length);
 		/// \returns a pointer to the string history.
-		list <string> * getStringHistory();
+		std::list <std::string> * getStringHistory();
 
 		void setSysExHistoryLength(int nSysEx);
 
 		/// \returns a pointer to the SysEx history.
-		list <vector <unsigned char> > * getSysExHistory();
+		std::list <std::vector <unsigned char> > * getSysExHistory();
 
 		/// \}
 		/// \name Events
@@ -396,7 +398,7 @@ class ofxFirmata {
 
 		/// \brief Triggered when a SysEx message that isn't in the extended
 		/// command set is received, the SysEx message is passed as an argument
-		ofEvent <const vector <unsigned char> > ESysExReceived;
+		ofEvent <const std::vector <unsigned char> > ESysExReceived;
 
 		/// \brief Triggered when a protocol version is received, the major version
 		/// is passed as an argument.
@@ -413,7 +415,7 @@ class ofxFirmata {
 
 		/// \brief Triggered when a string is received, the string is passed as an
 		/// argument
-		ofEvent <const string> EStringReceived;
+		ofEvent <const std::string> EStringReceived;
 
 		int getPinNum()
 		{
@@ -421,11 +423,11 @@ class ofxFirmata {
 		}
 
 		using PinResolution = int;
-		using PinCapability = map<PinMode, PinResolution>;
+		using PinCapability = std::map<PinMode, PinResolution>;
 		PinCapability getPinCapibility(int pin)
 		{
 			if (pin >= _pin_capabilites.size())
-				return map<PinMode, PinResolution>();
+				return std::map<PinMode, PinResolution>();
 			else
 			{
 				return _pin_capabilites[pin];
@@ -461,7 +463,7 @@ class ofxFirmata {
 		void _processSerialData(unsigned char inputData);
 		void _updateDigitalPort(int port, unsigned char value);
 		void _updateAnalogPin(int pinNum, int value);
-		virtual void _processSysExData(vector <unsigned char> data);
+		virtual void _processSysExData(std::vector <unsigned char> data);
 
 		// the last set servo values
 		void sendByte(MessageType msg);
@@ -481,23 +483,23 @@ class ofxFirmata {
 		int _sysExHistoryLength = 1;
 
 		// --- data holders
-		vector <unsigned char> _storedSerialData;
+		std::vector <unsigned char> _storedSerialData;
 		int _majorProtocolVersion = 0;
 		int _minorProtocolVersion = 0;
 		int _majorFirmwareVersion = 0;
 		int _minorFirmwareVersion = 0;
-		string _firmwareName = "Unknown";;
+		std::string _firmwareName = "Unknown";;
 
 		// sum of majorFirmwareVersion * 10 + minorFirmwareVersion -> Firmata (?)
 		int _firmwareVersionSum = 0;
 
-		list <vector <unsigned char> > _sysExHistory;
+		std::list <std::vector <unsigned char> > _sysExHistory;
 		// maintains a history of received sysEx messages (excluding SysEx messages in the extended command set)
 
-		list <string> _stringHistory;
+		std::list <std::string> _stringHistory;
 		// maintains a history of received strings
 
-		vector<PinCapability> _pin_capabilites;
+		std::vector<PinCapability> _pin_capabilites;
 
 		struct DigitalPin
 		{
@@ -505,7 +507,7 @@ class ofxFirmata {
 			PinMode mode = PinMode::_NULL;
 			int value = -1;
 			ReportStrategy reportStrategy = ReportStrategy::None;
-			list <int> history;
+			std::list <int> history;
 		};
 
 		struct DigitalPort
@@ -514,9 +516,9 @@ class ofxFirmata {
 			bool reporting = false;
 		};
 
-		vector<DigitalPin*> _analog_pins;
-		vector<DigitalPin> _digital_pins;
-		vector<DigitalPort> _digital_ports;
+		std::vector<DigitalPin*> _analog_pins;
+		std::vector<DigitalPin> _digital_pins;
+		std::vector<DigitalPort> _digital_ports;
 
 		bool _bUseDelay = true;
 		mutable bool _connected = false; ///< \brief This yields true if a serial connection to Arduino exists.
